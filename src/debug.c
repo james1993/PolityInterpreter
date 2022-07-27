@@ -3,38 +3,23 @@
 #include "debug.h"
 #include "value.h"
 
-static int simple_instruction(const char* name, int offset)
-{
-    printf("%s\n", name);
-    return offset + 1;
-}
-
-static int constant_instruction(const char* name, chunk* chunk, int offset)
-{
-    uint8_t constant = chunk->code[offset + 1];
-    printf("%-16s %4d '", name, constant);
-    print_value(chunk->constants.values[constant]);
-    printf("'\n");
-    return offset + 2;
-}
-
 int disassemble_instruction(chunk* chunk, int offset)
 {
     printf("%04d ", offset);
-    if (offset > 0 && chunk->lines[offset] == chunk->lines[offset - 1]) {
-        printf("   | ");
-    } else {
-        printf("%4d ", chunk->lines[offset]);
-    }
+    if (offset > 0 && chunk->lines[offset] == chunk->lines[offset - 1]) printf("   | ");
+    else printf("%4d ", chunk->lines[offset]);
 
     uint8_t instruction = chunk->code[offset];
     switch (instruction) {
         case OP_CONSTANT:
-            return constant_instruction("OP_CONSTANT", chunk, offset);
+            uint8_t constant = chunk->code[offset + 1];
+            printf("%-16s %4d '%g'\n", "OP_CONSTANT", constant, chunk->constants.values[constant]);
+            return offset + 2;
         case OP_RETURN:
-            return simple_instruction("OP_RETURN", offset);
+            printf("OP_RETURN\n");
+            return offset + 1;
         default:
-            printf("Unknown opcode %d\n", instruction);
+            printf("Unknown opcode (%d)\n", instruction);
             return offset + 1;
     }
 }
