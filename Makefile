@@ -4,17 +4,17 @@ CFLAGS=-I$(IDIR)
 
 ODIR=src
 
-_DEPS = common.h memory.h debug.h chunk.h value.h
+_DEPS = common.h debug.h chunk.h vm.h
 DEPS = $(patsubst %,$(IDIR)/%,$(_DEPS))
 
-_OBJ = main.o memory.o debug.o chunk.o value.o
+_OBJ = main.o debug.o chunk.o vm.o
 OBJ = $(patsubst %,$(ODIR)/%,$(_OBJ))
 
 $(ODIR)/%.o: %.c $(DEPS)
 	$(CC) -c -o $@ $< $(CFLAGS)
 
 polity_interpreter: $(OBJ)
-	$(CC) -o $@ $^ $(CFLAGS)
+	$(CC) -g -O1 -o $@ $^ $(CFLAGS)
 
 .PHONY: clean
 

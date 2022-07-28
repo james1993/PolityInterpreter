@@ -1,7 +1,6 @@
 #include <stdio.h>
 
 #include "debug.h"
-#include "value.h"
 
 int disassemble_instruction(chunk* chunk, int offset)
 {
@@ -15,13 +14,29 @@ int disassemble_instruction(chunk* chunk, int offset)
             uint8_t constant = chunk->code[offset + 1];
             printf("%-16s %4d '%g'\n", "OP_CONSTANT", constant, chunk->constants.values[constant]);
             return offset + 2;
+        case OP_ADD:
+            printf("OP_ADD\n");
+            return offset + 1;
+        case OP_SUBTRACT:
+            printf("OP_SUBTRACT\n");
+            return offset + 1;
+        case OP_MULTIPLY:
+            printf("OP_MULTIPLY\n");
+            return offset + 1;
+        case OP_DIVIDE:
+            printf("OP_DIVIDE\n");
+            return offset + 1;
+        case OP_NEGATE:
+            printf("OP_NEGATE\n");
+            return offset + 1;
         case OP_RETURN:
             printf("OP_RETURN\n");
             return offset + 1;
         default:
             printf("Unknown opcode (%d)\n", instruction);
-            return offset + 1;
     }
+
+    return offset + 1;
 }
 
 void disassemble_chunk(chunk* chunk, const char* name)

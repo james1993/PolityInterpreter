@@ -2,22 +2,14 @@
 
 #include "chunk.h"
 #include "memory.h"
-
-void init_chunk(chunk* chunk)
-{
-    chunk->count = 0;
-    chunk->capacity = 0;
-    chunk->code = NULL;
-    chunk->lines = NULL;
-    init_value_array(&chunk->constants);
-}
+#include "common.h"
 
 void write_chunk(chunk* chunk, uint8_t byte, int line)
 {
     if (chunk->capacity < chunk->count + 1) {
-        chunk->capacity = GROW_CAPACITY(chunk->capacity);
-        chunk->code = GROW_ARRAY(uint8_t, chunk->code, chunk->capacity);
-        chunk->lines = GROW_ARRAY(int, chunk->lines, chunk->capacity);
+        chunk->capacity = (chunk->capacity) < 8 ? 8 : (chunk->capacity) * 2;
+        chunk->code = (uint8_t*)realloc(chunk->code, sizeof(uint8_t) * (chunk->capacity));
+        chunk->lines = (int*)realloc(chunk->lines, sizeof(int) * (chunk->capacity));
     }
 
     chunk->code[chunk->count] = byte;
@@ -29,12 +21,17 @@ void free_chunk(chunk* chunk)
 {
     free(chunk->code);
     free(chunk->lines);
-    free_value_array(&chunk->constants);
-    init_chunk(chunk);
+    free(chunk->constants.values);
+    free(chunk);
 }
 
 int add_constant(chunk* chunk, Value value)
 {
-    write_value_array(&chunk->constants, value);
+    if (chunk->constants.capacity < chunk->constants.count + 1) {
+        chunk->constants.capacity = (chunk->constants.capacity) < 8 ? 8 : (chunk->constants.capacity) * 2;
+        chunk->constants.values = (Value*)realloc(chunk->constants.values, sizeof(Value) * (chunk->constants.capacity));
+    }
+
+    chunk->constants.values[chunk->constants.count++] = value;
     return chunk->constants.count - 1;
 }
