@@ -1,5 +1,4 @@
-#include <stdio.h>
-
+#include "common.h"
 #include "debug.h"
 
 int disassemble_instruction(chunk* chunk, int offset)

@@ -1,67 +1,51 @@
-#include <stdio.h>
-#include <stdlib.h>
-
 #include "common.h"
 #include "vm.h"
 #include "debug.h"
+#include "compiler.h"
 
 static interpret_result run(VM* vm)
 {
-    #define READ_BYTE() (*vm->ip++)
-    #define READ_CONSTANT() (vm->chunk->constants.values[READ_BYTE()])
+    double a, b;
+    for(;;) { /* TODO: Infinite loops make me sad :( */
 
-    for(;;) {
-#ifdef DEBUG_TRACE_EXECUTION
+#ifdef DEBUG
         printf("        ");
         for (Value* slot = vm->stack; slot < vm->stack_top; slot++)
             printf("[ %g ]", *slot);
         printf("\n");
         disassemble_instruction(vm->chunk, (int)(vm->ip - vm->chunk->code));
 #endif
+
         uint8_t instruction;
-        switch (instruction = READ_BYTE()) {
-            case OP_CONSTANT: {
-                Value constant = READ_CONSTANT();
+        switch (instruction = (*vm->ip++)) {
+            case OP_CONSTANT:
+                Value constant = vm->chunk->constants.values[(*vm->ip++)];
                 push(vm, constant);
                 break;
-            }
-            case OP_ADD: {
-                double b = pop(vm);
-                double a = pop(vm);
+            case OP_ADD:
+                b = pop(vm); a = pop(vm);
                 push(vm, a + b);
                 break;
-            }
-            case OP_SUBTRACT: {
-                double b = pop(vm);
-                double a = pop(vm);
+            case OP_SUBTRACT:
+                b = pop(vm); a = pop(vm);
                 push(vm, a - b);
                 break;
-            }
-            case OP_MULTIPLY: {
-                double b = pop(vm);
-                double a = pop(vm);
+            case OP_MULTIPLY:
+                b = pop(vm); a = pop(vm);
                 push(vm, a * b);
                 break;
-            }
-            case OP_DIVIDE: {
-                double b = pop(vm);
-                double a = pop(vm);
+            case OP_DIVIDE:
+                b = pop(vm); a = pop(vm);
                 push(vm, a / b);
                 break;
-            }
-            case OP_NEGATE: {
+            case OP_NEGATE:
                 push(vm, -pop(vm));
                 break;
-            }
-            case OP_RETURN: {
+            case OP_RETURN:
                 printf("%g\n", pop(vm));
                 return INTERPRET_OK;
-            }
         }
     }
-
-    #undef READ_BYTE
-    #undef READ_CONSTANT
 }
 
 VM* init_vm()
@@ -72,9 +56,8 @@ VM* init_vm()
     return vm;
 }
 
-interpret_result interpret(VM* vm, chunk* chunk)
+interpret_result interpret(VM* vm, const char* source)
 {
-    vm->chunk = chunk;
-    vm->ip = chunk->code;
-    return run(vm);
+   compile(source);
+   return INTERPRET_OK;
 }

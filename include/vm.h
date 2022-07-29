@@ -20,7 +20,7 @@ typedef enum {
 } interpret_result;
 
 VM* init_vm();
-interpret_result interpret(VM* vm, chunk* chunk);
+interpret_result interpret(VM* vm, const char* source);
 static inline void push(VM* vm, Value value) { *(vm->stack_top++) = value; }
 static inline Value pop(VM* vm) { return *(--vm->stack_top); }
 
