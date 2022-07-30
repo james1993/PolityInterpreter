@@ -6,7 +6,7 @@
 static interpret_result run(VM* vm)
 {
     double a, b;
-    for(;;) { /* TODO: Infinite loops make me sad :( */
+    for(;;) {
 
 #ifdef DEBUG
         printf("        ");
@@ -58,6 +58,18 @@ VM* init_vm()
 
 interpret_result interpret(VM* vm, const char* source)
 {
-   compile(source);
-   return INTERPRET_OK;
+    chunk* ch = (chunk*)calloc(1, sizeof(chunk));
+
+    if (!compile(source, ch)) {
+        free_chunk(ch);
+        return INTERPRET_COMPILE_ERROR;
+    }
+
+    vm->chunk = ch;
+    vm->ip = ch->code;
+
+    interpret_result result = run(vm);
+
+    free_chunk(ch);
+    return result;
 }

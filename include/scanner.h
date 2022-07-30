@@ -36,6 +36,13 @@ typedef struct {
     int line;
 } token;
 
+typedef struct {
+    token current;
+    token previous;
+    bool had_error;
+    bool panic_mode;
+} parser;
+
 scanner* init_scanner(const char* source);
 token scan_token(scanner* s);
 
