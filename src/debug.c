@@ -11,8 +11,26 @@ int disassemble_instruction(chunk* chunk, int offset)
     switch (instruction) {
         case OP_CONSTANT:
             uint8_t constant = chunk->code[offset + 1];
-            printf("%-16s %4d '%g'\n", "OP_CONSTANT", constant, chunk->constants.values[constant]);
+            printf("%-16s %4d '%g'\n", "OP_CONSTANT", constant, AS_NUMBER(chunk->constants.values[constant]));
             return offset + 2;
+        case OP_NIL:
+            printf("OP_NIL\n");
+            return offset + 1;
+        case OP_TRUE:
+            printf("OP_TRUE\n");
+            return offset + 1;
+        case OP_FALSE:
+            printf("OP_FALSE\n");
+            return offset + 1;
+        case OP_EQUAL:
+            printf("OP_EQUAL\n");
+            return offset + 1;
+        case OP_GREATER:
+            printf("OP_GREATER\n");
+            return offset + 1;
+        case OP_LESS:
+            printf("OP_LESS\n");
+            return offset + 1;
         case OP_ADD:
             printf("OP_ADD\n");
             return offset + 1;
@@ -24,6 +42,9 @@ int disassemble_instruction(chunk* chunk, int offset)
             return offset + 1;
         case OP_DIVIDE:
             printf("OP_DIVIDE\n");
+            return offset + 1;
+        case OP_NOT:
+            printf("OP_NOT");
             return offset + 1;
         case OP_NEGATE:
             printf("OP_NEGATE\n");

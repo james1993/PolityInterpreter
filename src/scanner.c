@@ -103,7 +103,7 @@ static token error_token(scanner* s, const char* message)
 
 static bool match(scanner* s, char expected)
 {
-    if (*s->current) return false;
+    if (*s->current == '\0') return false;
     if (*s->current != expected) return false;
 
     *s->current++;

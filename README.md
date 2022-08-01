@@ -1,2 +1,2 @@
 # PolityInterpreter
-Interpreter for the Polity language
+Interpreter for the dynamically-typed Polity language.
