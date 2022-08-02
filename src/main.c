@@ -79,6 +79,19 @@ int main(int argc, const char* argv[])
 		exit(64);
 	}
 
+	/* Free allocated strings */
+	struct Obj* object = vm->objects;
+	while (object != NULL) {
+		struct Obj* next = object->next;
+		switch (object->type) {
+			case OBJ_STRING:
+				obj_string* str = (obj_string*)object;
+				free(str->chars);
+				free(str);
+		}
+		object = next;
+	}
+
 	free(vm);
 
 	return 0;

@@ -1,15 +1,15 @@
-==295632== Memcheck, a memory error detector
-==295632== Copyright (C) 2002-2017, and GNU GPL'd, by Julian Seward et al.
-==295632== Using Valgrind-3.18.1 and LibVEX; rerun with -h for copyright info
-==295632== Command: ./polity_interpreter test.txt
-==295632== Parent PID: 142104
-==295632== 
-==295632== 
-==295632== HEAP SUMMARY:
-==295632==     in use at exit: 0 bytes in 0 blocks
-==295632==   total heap usage: 13 allocs, 13 frees, 10,105 bytes allocated
-==295632== 
-==295632== All heap blocks were freed -- no leaks are possible
-==295632== 
-==295632== For lists of detected and suppressed errors, rerun with: -s
-==295632== ERROR SUMMARY: 0 errors from 0 contexts (suppressed: 0 from 0)
+==320763== Memcheck, a memory error detector
+==320763== Copyright (C) 2002-2017, and GNU GPL'd, by Julian Seward et al.
+==320763== Using Valgrind-3.18.1 and LibVEX; rerun with -h for copyright info
+==320763== Command: ./polity_interpreter test.txt
+==320763== Parent PID: 142104
+==320763== 
+==320763== 
+==320763== HEAP SUMMARY:
+==320763==     in use at exit: 0 bytes in 0 blocks
+==320763==   total heap usage: 17 allocs, 17 frees, 10,151 bytes allocated
+==320763== 
+==320763== All heap blocks were freed -- no leaks are possible
+==320763== 
+==320763== For lists of detected and suppressed errors, rerun with: -s
+==320763== ERROR SUMMARY: 0 errors from 0 contexts (suppressed: 0 from 0)

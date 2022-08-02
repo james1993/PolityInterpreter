@@ -33,6 +33,13 @@ static void print_value(Value value)
             printf(AS_BOOL(value) ? "true" : "false"); break;
         case VAL_NIL: printf("nil"); break;
         case VAL_NUMBER: printf("%g", AS_NUMBER(value)); break;
+        case VAL_OBJ: 
+            switch (OBJ_TYPE(value)) {
+                case OBJ_STRING:
+                    printf("%s", AS_CSTRING(value));
+                    break;
+            }
+            break;
     }
 }
 
@@ -44,9 +51,28 @@ bool values_equal(Value a, Value b)
         case VAL_BOOL:      return AS_BOOL(a) == AS_BOOL(b);
         case VAL_NIL:       return true;
         case VAL_NUMBER:    return AS_NUMBER(a) == AS_NUMBER(b);
+        case VAL_OBJ:
+            obj_string* a_string = AS_STRING(a);
+            obj_string* b_string = AS_STRING(b);
+            return a_string->length == b_string->length && memcmp(a_string->chars, b_string->chars, a_string->length) == 0;
         default:
             return false;
     }
+}
+
+static void concatenate(VM* vm)
+{
+    obj_string* b = AS_STRING(pop(vm));
+    obj_string* a = AS_STRING(pop(vm));
+
+    int length = a->length + b->length;
+    char* chars = (char*)malloc(sizeof(char) * (length + 1));
+    memcpy(chars, a->chars, a->length);
+    memcpy(chars + a->length, b->chars, b->length);
+    chars[length] = '\0';
+
+    obj_string* result = allocate_string(vm, chars, length);
+    push(vm, OBJ_VAL(result));
 }
 
 static interpret_result run(VM* vm)
@@ -85,9 +111,16 @@ static interpret_result run(VM* vm)
                 push(vm, NUMBER_VAL(a < b));
                 break;
             case OP_ADD:
-                if (check(vm)) return check(vm);
-                b = AS_NUMBER(pop(vm)); a = AS_NUMBER(pop(vm));
-                push(vm, NUMBER_VAL(a + b));
+                if (IS_STRING(peek(vm, 0)) && IS_STRING(peek(vm, 1))) {
+                    concatenate(vm);
+                } else if (IS_NUMBER(peek(vm, 0)) && IS_NUMBER(peek(vm, 1))) {
+                    double b = AS_NUMBER(pop(vm));
+                    double a = AS_NUMBER(pop(vm));
+                    push(vm, NUMBER_VAL(a + b));
+                } else {
+                    runtime_error(vm, "Operands must be two numbers or two strings\n");
+                    return INTERPRET_RUNTIME_ERROR;
+                }
                 break;
             case OP_SUBTRACT:
                 if (check(vm)) return check(vm);
@@ -126,6 +159,7 @@ VM* init_vm()
 {
     VM* vm = (VM*)malloc(sizeof(VM));
     vm->stack_top = vm->stack;
+    vm->objects = NULL;
 
     return vm;
 }
@@ -134,7 +168,7 @@ interpret_result interpret(VM* vm, const char* source)
 {
     chunk* ch = (chunk*)calloc(1, sizeof(chunk));
 
-    if (!compile(source, ch)) {
+    if (!compile(source, ch, vm)) {
         free_chunk(ch);
         return INTERPRET_COMPILE_ERROR;
     }

@@ -4,9 +4,9 @@
 #include "debug.h"
 
 static parse_rule *get_rule(token_type type);
-static void expression(parser *parser, scanner *scanner, chunk *chunk);
-static void grouping(parser *parser, scanner *scanner, chunk *chunk);
-static void binary(parser *parser, scanner *scanner, chunk *chunk);
+static void expression(VM* vm, parser *parser, scanner *scanner, chunk *chunk);
+static void grouping(VM* vm, parser *parser, scanner *scanner, chunk *chunk);
+static void binary(VM* vm, parser *parser, scanner *scanner, chunk *chunk);
 
 static void error_at(parser *parser, token *token, const char *message)
 {
@@ -33,6 +33,28 @@ static void error(parser *parser, const char *message)
 static void error_at_current(parser *parser, const char *message)
 {
     error_at(parser, &parser->current, message);
+}
+
+obj_string* allocate_string(VM* vm, char* chars, int length)
+{
+    struct Obj* obj = (struct Obj*)malloc(sizeof(obj_string));
+    obj->type = OBJ_STRING;
+    obj->next = vm->objects;
+    vm->objects = obj;
+    obj_string* str = (obj_string*)obj;
+    str->length = length;
+    str->chars = chars;
+
+    return str;
+}
+
+obj_string* copy_string(VM* vm, const char* chars, int length)
+{
+    char* heap_chars = (char*)malloc(sizeof(char) * (length + 1));
+    memcpy(heap_chars, chars, length);
+    heap_chars[length] = '\0';
+
+    return allocate_string(vm, heap_chars, length);
 }
 
 static void advance(parser *parser, scanner *scanner)
@@ -93,13 +115,18 @@ static void emit_constant(parser *parser, chunk *chunk, Value value)
     emit_bytes(parser, chunk, OP_CONSTANT, make_constant(parser, chunk, value));
 }
 
-static void number(parser *parser, scanner *scanner, chunk *chunk)
+static void number(VM* vm, parser *parser, scanner *scanner, chunk *chunk)
 {
     double value = strtod(parser->previous.start, NULL);
     emit_constant(parser, chunk, NUMBER_VAL(value));
 }
 
-static void parse_precedence(parser *parser, scanner *scanner, chunk *chunk, precedence prec)
+static void string(VM* vm, parser* parser, scanner* scanner, chunk* chunk)
+{
+    emit_constant(parser, chunk, OBJ_VAL(copy_string(vm, parser->previous.start + 1, parser->previous.length - 2)));
+}
+
+static void parse_precedence(VM* vm, parser *parser, scanner *scanner, chunk *chunk, precedence prec)
 {
     advance(parser, scanner);
     parse_fn prefix_rule = get_rule(parser->previous.type)->prefix;
@@ -109,21 +136,21 @@ static void parse_precedence(parser *parser, scanner *scanner, chunk *chunk, pre
         return;
     }
 
-    prefix_rule(parser, scanner, chunk);
+    prefix_rule(vm, parser, scanner, chunk);
 
     while (prec <= get_rule(parser->current.type)->prec)
     {
         advance(parser, scanner);
         parse_fn infix_rule = get_rule(parser->previous.type)->infix;
-        infix_rule(parser, scanner, chunk);
+        infix_rule(vm, parser, scanner, chunk);
     }
 }
 
-static void unary(parser *parser, scanner *scanner, chunk *chunk)
+static void unary(VM* vm, parser *parser, scanner *scanner, chunk *chunk)
 {
     token_type operator_type = parser->previous.type;
 
-    parse_precedence(parser, scanner, chunk, PREC_UNARY);
+    parse_precedence(vm, parser, scanner, chunk, PREC_UNARY);
 
     switch (operator_type)
     {
@@ -147,7 +174,7 @@ static void end_compiler(parser *parser, chunk *chunk)
 #endif
 }
 
-static void literal(parser *parser, scanner *scanner, chunk *chunk)
+static void literal(VM* vm, parser *parser, scanner *scanner, chunk *chunk)
 {
     switch (parser->previous.type)
     {
@@ -186,7 +213,7 @@ parse_rule rules[] = {
     [TOKEN_LESS] = {NULL, binary, PREC_COMPARISON},
     [TOKEN_LESS_EQUAL] = {NULL, binary, PREC_COMPARISON},
     [TOKEN_IDENTIFIER] = {NULL, NULL, PREC_NONE},
-    [TOKEN_STRING] = {NULL, NULL, PREC_NONE},
+    [TOKEN_STRING] = {string, NULL, PREC_NONE},
     [TOKEN_NUMBER] = {number, NULL, PREC_NONE},
     [TOKEN_AND] = {NULL, NULL, PREC_NONE},
     [TOKEN_CLASS] = {NULL, NULL, PREC_NONE},
@@ -213,11 +240,11 @@ static parse_rule *get_rule(token_type type)
     return &rules[type];
 }
 
-static void binary(parser *parser, scanner *scanner, chunk *chunk)
+static void binary(VM* vm, parser *parser, scanner *scanner, chunk *chunk)
 {
     token_type operator_type = parser->previous.type;
     parse_rule *rule = get_rule(operator_type);
-    parse_precedence(parser, scanner, chunk, (precedence)(rule->prec + 1));
+    parse_precedence(vm, parser, scanner, chunk, (precedence)(rule->prec + 1));
 
     switch (operator_type)
     {
@@ -256,18 +283,18 @@ static void binary(parser *parser, scanner *scanner, chunk *chunk)
     }
 }
 
-static void grouping(parser *parser, scanner *scanner, chunk *chunk)
+static void grouping(VM* vm, parser *parser, scanner *scanner, chunk *chunk)
 {
-    expression(parser, scanner, chunk);
+    expression(vm, parser, scanner, chunk);
     consume(parser, scanner, TOKEN_RIGHT_PAREN, "Expect ')' after expression");
 }
 
-static void expression(parser *parser, scanner *scanner, chunk *chunk)
+static void expression(VM* vm, parser *parser, scanner *scanner, chunk *chunk)
 {
-    parse_precedence(parser, scanner, chunk, PREC_ASSIGNMENT);
+    parse_precedence(vm, parser, scanner, chunk, PREC_ASSIGNMENT);
 }
 
-bool compile(const char *source, chunk *ch)
+bool compile(const char *source, chunk *ch, VM* vm)
 {
     scanner *scanner = init_scanner(source);
     parser *p = (parser *)calloc(1, sizeof(parser));
@@ -275,7 +302,7 @@ bool compile(const char *source, chunk *ch)
     bool error;
 
     advance(p, scanner);
-    expression(p, scanner, chunk);
+    expression(vm, p, scanner, chunk);
     consume(p, scanner, TOKEN_EOF, "Expect end of expression");
     end_compiler(p, chunk);
 
