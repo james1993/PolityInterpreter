@@ -92,6 +92,10 @@ int main(int argc, const char* argv[])
 		object = next;
 	}
 
+	if(vm->strings.entries) {
+		free(vm->strings.entries);
+	}
+
 	free(vm);
 
 	return 0;

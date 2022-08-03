@@ -28,6 +28,7 @@ typedef struct {
 } parse_rule;
 
 bool compile(const char* source, chunk* ch, VM* vm);
-obj_string* allocate_string(VM* vm, char* chars, int length);
+obj_string* allocate_string(VM* vm, const char* chars, int length, uint32_t hash);
+uint32_t hash_string(const char* key, int length);
 
 #endif

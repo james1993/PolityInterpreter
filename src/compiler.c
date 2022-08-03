@@ -2,6 +2,7 @@
 #include "compiler.h"
 #include "scanner.h"
 #include "debug.h"
+#include "table.h"
 
 static parse_rule *get_rule(token_type type);
 static void expression(VM* vm, parser *parser, scanner *scanner, chunk *chunk);
@@ -35,7 +36,7 @@ static void error_at_current(parser *parser, const char *message)
     error_at(parser, &parser->current, message);
 }
 
-obj_string* allocate_string(VM* vm, char* chars, int length)
+obj_string* allocate_string(VM* vm, const char* chars, int length, uint32_t hash)
 {
     struct Obj* obj = (struct Obj*)malloc(sizeof(obj_string));
     obj->type = OBJ_STRING;
@@ -43,18 +44,37 @@ obj_string* allocate_string(VM* vm, char* chars, int length)
     vm->objects = obj;
     obj_string* str = (obj_string*)obj;
     str->length = length;
-    str->chars = chars;
+    str->chars = (char*)chars;
+    str->hash = hash;
+
+    table_set(&vm->strings, str, NIL_VAL);
 
     return str;
 }
 
+uint32_t hash_string(const char* key, int length)
+{
+    uint32_t hash = 2166136261u;
+
+    for (int i = 0; i < length; i++) {
+        hash ^= key[i];
+        hash *= 16777619;
+    }
+
+    return hash;
+}
+
 obj_string* copy_string(VM* vm, const char* chars, int length)
 {
-    char* heap_chars = (char*)malloc(sizeof(char) * (length + 1));
-    memcpy(heap_chars, chars, length);
-    heap_chars[length] = '\0';
+    uint32_t hash = hash_string(chars, length);
+    obj_string* interned = table_find_string(&vm->strings, chars, length, hash);
 
-    return allocate_string(vm, heap_chars, length);
+    if (interned != NULL) {
+        free((char*)chars);
+        return interned;
+    }
+
+    return allocate_string(vm, chars, length, hash);
 }
 
 static void advance(parser *parser, scanner *scanner)

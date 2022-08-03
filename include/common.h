@@ -24,6 +24,7 @@ typedef struct {
     struct Obj obj;
     int length;
     char* chars;
+    uint32_t hash;
 } obj_string;
 
 typedef enum {

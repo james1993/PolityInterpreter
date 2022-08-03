@@ -71,7 +71,8 @@ static void concatenate(VM* vm)
     memcpy(chars + a->length, b->chars, b->length);
     chars[length] = '\0';
 
-    obj_string* result = allocate_string(vm, chars, length);
+    uint32_t hash = hash_string(chars, length);
+    obj_string* result = allocate_string(vm, chars, length, hash);
     push(vm, OBJ_VAL(result));
 }
 
@@ -160,6 +161,10 @@ VM* init_vm()
     VM* vm = (VM*)malloc(sizeof(VM));
     vm->stack_top = vm->stack;
     vm->objects = NULL;
+
+    vm->strings.count = 0;
+    vm->strings.capacity = 0;
+    vm->strings.entries = NULL;
 
     return vm;
 }
