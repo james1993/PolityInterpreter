@@ -22,6 +22,21 @@ int disassemble_instruction(chunk* chunk, int offset)
         case OP_FALSE:
             printf("OP_FALSE\n");
             return offset + 1;
+        case OP_POP:
+            printf("OP_POP");
+            return offset + 1;
+        case OP_GET_GLOBAL:
+            uint8_t global_get = chunk->code[offset + 1];
+            printf("%-16s %4d '%g'\n", "OP_GET_GLOBAL", global_get, AS_NUMBER(chunk->constants.values[global_get]));
+            return offset + 2;
+        case OP_DEFINE_GLOBAL:
+            uint8_t global_def = chunk->code[offset + 1];
+            printf("%-16s %4d '%g'\n", "OP_DEFINE_GLOBAL", global_def, AS_NUMBER(chunk->constants.values[global_def]));
+            return offset + 2;
+        case OP_SET_GLOBAL:
+            uint8_t global_set = chunk->code[offset + 1];
+            printf("%-16s %4d '%g'\n", "OP_SET_GLOBAL", global_set, AS_NUMBER(chunk->constants.values[global_set]));
+            return offset + 2;
         case OP_EQUAL:
             printf("OP_EQUAL\n");
             return offset + 1;
@@ -48,6 +63,9 @@ int disassemble_instruction(chunk* chunk, int offset)
             return offset + 1;
         case OP_NEGATE:
             printf("OP_NEGATE\n");
+            return offset + 1;
+        case OP_PRINT:
+            printf("OP_PRINT\n");
             return offset + 1;
         case OP_RETURN:
             printf("OP_RETURN\n");

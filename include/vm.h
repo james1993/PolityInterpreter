@@ -12,6 +12,7 @@ typedef struct {
     uint8_t* ip; /* instruction pointer */
     Value stack[STACK_MAX];
     Value* stack_top;
+    Table globals;
     Table strings;
     struct Obj* objects;
 } VM;
@@ -24,7 +25,7 @@ typedef enum {
 
 VM* init_vm();
 bool values_equal(Value a, Value b);
-interpret_result interpret(VM* vm, const char* source);
+interpret_result interpret(VM* vm, char* source);
 static inline void push(VM* vm, Value value) { *(vm->stack_top++) = value; }
 static inline Value pop(VM* vm) { return *(--vm->stack_top); }
 static inline Value peek(VM* vm, int distance) { return vm->stack_top[-1 - distance]; }

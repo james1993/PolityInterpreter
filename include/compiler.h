@@ -5,7 +5,7 @@
 #include "scanner.h"
 #include "chunk.h"
 
-typedef void (*parse_fn)(VM* vm, parser* p, scanner* s, chunk* c);
+typedef void (*parse_fn)(VM* vm, parser* p, scanner* s, chunk* c, bool can_assign);
 
 typedef enum {
     PREC_NONE,
@@ -27,8 +27,8 @@ typedef struct {
     precedence prec;
 } parse_rule;
 
-bool compile(const char* source, chunk* ch, VM* vm);
-obj_string* allocate_string(VM* vm, const char* chars, int length, uint32_t hash);
+bool compile(char* source, chunk* ch, VM* vm);
+obj_string* allocate_string(VM* vm, char* chars, int length, uint32_t hash);
 uint32_t hash_string(const char* key, int length);
 
 #endif

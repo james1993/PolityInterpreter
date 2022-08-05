@@ -1,7 +1,7 @@
 #include "common.h"
 #include "scanner.h"
 
-scanner* init_scanner(const char* source)
+scanner* init_scanner(char* source)
 {
     scanner* s = (scanner*)malloc(sizeof(scanner));
     s->start = source;
@@ -90,7 +90,7 @@ static token number(scanner* s)
     return make_token(s, TOKEN_NUMBER);
 }
 
-static token error_token(scanner* s, const char* message)
+static token error_token(scanner* s, char* message)
 {
     token t;
     t.type = TOKEN_ERROR;

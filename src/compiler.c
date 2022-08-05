@@ -5,9 +5,12 @@
 #include "table.h"
 
 static parse_rule *get_rule(token_type type);
-static void expression(VM* vm, parser *parser, scanner *scanner, chunk *chunk);
-static void grouping(VM* vm, parser *parser, scanner *scanner, chunk *chunk);
-static void binary(VM* vm, parser *parser, scanner *scanner, chunk *chunk);
+static void expression(VM* vm, parser *parser, scanner *scanner, chunk *chunk, bool can_assign);
+static void grouping(VM* vm, parser *parser, scanner *scanner, chunk *chunk, bool can_assign);
+static void binary(VM* vm, parser *parser, scanner *scanner, chunk *chunk, bool can_assign);
+static void statement(VM* vm, parser* parser, scanner* scanner, chunk* chunk, bool can_assign);
+static void declaration(VM* vm, parser* parser, scanner* scanner, chunk* chunk, bool can_assign);
+static uint8_t identifier_constant(VM* vm, parser* parser, chunk* chunk, token* name);
 
 static void error_at(parser *parser, token *token, const char *message)
 {
@@ -36,7 +39,7 @@ static void error_at_current(parser *parser, const char *message)
     error_at(parser, &parser->current, message);
 }
 
-obj_string* allocate_string(VM* vm, const char* chars, int length, uint32_t hash)
+obj_string* allocate_string(VM* vm, char* chars, int length, uint32_t hash)
 {
     struct Obj* obj = (struct Obj*)malloc(sizeof(obj_string));
     obj->type = OBJ_STRING;
@@ -44,7 +47,7 @@ obj_string* allocate_string(VM* vm, const char* chars, int length, uint32_t hash
     vm->objects = obj;
     obj_string* str = (obj_string*)obj;
     str->length = length;
-    str->chars = (char*)chars;
+    str->chars = chars;
     str->hash = hash;
 
     table_set(&vm->strings, str, NIL_VAL);
@@ -64,13 +67,12 @@ uint32_t hash_string(const char* key, int length)
     return hash;
 }
 
-obj_string* copy_string(VM* vm, const char* chars, int length)
+obj_string* copy_string(VM* vm, char* chars, int length)
 {
     uint32_t hash = hash_string(chars, length);
     obj_string* interned = table_find_string(&vm->strings, chars, length, hash);
 
     if (interned != NULL) {
-        free((char*)chars);
         return interned;
     }
 
@@ -100,6 +102,18 @@ static void consume(parser *parser, scanner *scanner, token_type type, const cha
     }
 
     error_at_current(parser, message);
+}
+
+static bool check(parser* parser, token_type type)
+{
+    return parser->current.type == type;
+}
+
+static bool match(parser* parser, scanner* scanner, token_type type)
+{
+    if (!check(parser, type)) return false;
+    advance(parser, scanner);
+    return true;
 }
 
 static void emit_byte(parser *parser, chunk *chunk, uint8_t byte)
@@ -135,15 +149,32 @@ static void emit_constant(parser *parser, chunk *chunk, Value value)
     emit_bytes(parser, chunk, OP_CONSTANT, make_constant(parser, chunk, value));
 }
 
-static void number(VM* vm, parser *parser, scanner *scanner, chunk *chunk)
+static void number(VM* vm, parser *parser, scanner *scanner, chunk *chunk, bool can_assign)
 {
     double value = strtod(parser->previous.start, NULL);
     emit_constant(parser, chunk, NUMBER_VAL(value));
 }
 
-static void string(VM* vm, parser* parser, scanner* scanner, chunk* chunk)
+static void string(VM* vm, parser* parser, scanner* scanner, chunk* chunk, bool can_assign)
 {
     emit_constant(parser, chunk, OBJ_VAL(copy_string(vm, parser->previous.start + 1, parser->previous.length - 2)));
+}
+
+static void named_variable(VM* vm, parser* parser, scanner* scanner, chunk* chunk, token name, bool can_assign)
+{
+    uint8_t arg = identifier_constant(vm, parser, chunk, &name);
+
+    if (can_assign && match(parser, scanner, TOKEN_EQUAL)) {
+        expression(vm, parser, scanner, chunk, can_assign);
+        emit_bytes(parser, chunk, OP_GET_GLOBAL, arg);
+    } else {
+        emit_bytes(parser, chunk, OP_GET_GLOBAL, arg);
+    }
+}
+
+static void variable(VM* vm, parser* parser, scanner* scanner, chunk* chunk, bool can_assign)
+{
+    named_variable(vm, parser, scanner, chunk, parser->previous, can_assign);
 }
 
 static void parse_precedence(VM* vm, parser *parser, scanner *scanner, chunk *chunk, precedence prec)
@@ -156,17 +187,33 @@ static void parse_precedence(VM* vm, parser *parser, scanner *scanner, chunk *ch
         return;
     }
 
-    prefix_rule(vm, parser, scanner, chunk);
+    bool can_assign = prec <= PREC_ASSIGNMENT;
+    prefix_rule(vm, parser, scanner, chunk, can_assign);
 
     while (prec <= get_rule(parser->current.type)->prec)
     {
         advance(parser, scanner);
         parse_fn infix_rule = get_rule(parser->previous.type)->infix;
-        infix_rule(vm, parser, scanner, chunk);
+        infix_rule(vm, parser, scanner, chunk, can_assign);
+    }
+
+    if (can_assign && match(parser, scanner, TOKEN_EQUAL)) {
+        error(parser, "Invalid assignment target");
     }
 }
 
-static void unary(VM* vm, parser *parser, scanner *scanner, chunk *chunk)
+static uint8_t identifier_constant(VM* vm, parser* parser, chunk* chunk, token* name)
+{
+    return make_constant(parser, chunk, OBJ_VAL(copy_string(vm, name->start, name->length)));
+}
+
+static uint8_t parse_variable(VM* vm, parser* parser, scanner* scanner, chunk* chunk, const char* message)
+{
+    consume(parser, scanner, TOKEN_IDENTIFIER, message);
+    return identifier_constant(vm, parser, chunk, &parser->previous);
+}
+
+static void unary(VM* vm, parser *parser, scanner *scanner, chunk *chunk, bool can_assign)
 {
     token_type operator_type = parser->previous.type;
 
@@ -194,7 +241,7 @@ static void end_compiler(parser *parser, chunk *chunk)
 #endif
 }
 
-static void literal(VM* vm, parser *parser, scanner *scanner, chunk *chunk)
+static void literal(VM* vm, parser *parser, scanner *scanner, chunk *chunk, bool can_assign)
 {
     switch (parser->previous.type)
     {
@@ -232,7 +279,7 @@ parse_rule rules[] = {
     [TOKEN_GREATER_EQUAL] = {NULL, binary, PREC_COMPARISON},
     [TOKEN_LESS] = {NULL, binary, PREC_COMPARISON},
     [TOKEN_LESS_EQUAL] = {NULL, binary, PREC_COMPARISON},
-    [TOKEN_IDENTIFIER] = {NULL, NULL, PREC_NONE},
+    [TOKEN_IDENTIFIER] = {variable, NULL, PREC_NONE},
     [TOKEN_STRING] = {string, NULL, PREC_NONE},
     [TOKEN_NUMBER] = {number, NULL, PREC_NONE},
     [TOKEN_AND] = {NULL, NULL, PREC_NONE},
@@ -260,7 +307,7 @@ static parse_rule *get_rule(token_type type)
     return &rules[type];
 }
 
-static void binary(VM* vm, parser *parser, scanner *scanner, chunk *chunk)
+static void binary(VM* vm, parser *parser, scanner *scanner, chunk *chunk, bool can_assign)
 {
     token_type operator_type = parser->previous.type;
     parse_rule *rule = get_rule(operator_type);
@@ -303,18 +350,96 @@ static void binary(VM* vm, parser *parser, scanner *scanner, chunk *chunk)
     }
 }
 
-static void grouping(VM* vm, parser *parser, scanner *scanner, chunk *chunk)
+static void grouping(VM* vm, parser *parser, scanner *scanner, chunk *chunk, bool can_assign)
 {
-    expression(vm, parser, scanner, chunk);
+    expression(vm, parser, scanner, chunk, can_assign);
     consume(parser, scanner, TOKEN_RIGHT_PAREN, "Expect ')' after expression");
 }
 
-static void expression(VM* vm, parser *parser, scanner *scanner, chunk *chunk)
+static void expression(VM* vm, parser *parser, scanner *scanner, chunk *chunk, bool can_assign)
 {
     parse_precedence(vm, parser, scanner, chunk, PREC_ASSIGNMENT);
 }
 
-bool compile(const char *source, chunk *ch, VM* vm)
+static void define_variable(parser* parser, chunk* chunk, uint8_t global)
+{
+    emit_bytes(parser, chunk, OP_DEFINE_GLOBAL, global);
+}
+
+static void var_declaration(VM* vm, parser* parser, scanner* scanner, chunk* chunk, bool can_assign)
+{
+    uint8_t global = parse_variable(vm, parser, scanner, chunk, "Expect variable name");
+
+    if (match(parser, scanner, TOKEN_EQUAL)) {
+        expression(vm, parser, scanner, chunk, can_assign);
+    } else {
+        emit_byte(parser, chunk, OP_NIL);
+    }
+    consume(parser, scanner, TOKEN_SEMICOLON, "Expect ';' after variable declaration");
+
+    define_variable(parser, chunk, global);
+}
+
+static void expression_statement(VM* vm, parser* parser, scanner* scanner, chunk* chunk, bool can_assign)
+{
+    expression(vm, parser, scanner, chunk, can_assign);
+    consume(parser, scanner, TOKEN_SEMICOLON, "Expect ';' after expression");
+    emit_byte(parser, chunk, OP_POP);
+}
+
+static void print_statement(VM* vm, parser* parser, scanner* scanner, chunk* chunk, bool can_assign)
+{
+    expression(vm, parser, scanner, chunk, can_assign);
+    consume(parser, scanner, TOKEN_SEMICOLON, "Expect ';' after value");
+    emit_byte(parser, chunk, OP_PRINT);
+}
+
+static void synchronize(parser* parser, scanner* scanner)
+{
+    parser->panic_mode = false;
+
+    while (parser->current.type != TOKEN_EOF) {
+        if (parser->previous.type == TOKEN_SEMICOLON) return;
+
+        switch (parser->current.type) {
+            case TOKEN_CLASS:
+            case TOKEN_FUN:
+            case TOKEN_VAR:
+            case TOKEN_FOR:
+            case TOKEN_IF:
+            case TOKEN_WHILE:
+            case TOKEN_PRINT:
+            case TOKEN_RETURN:
+                return;
+            default:
+                ;
+        }
+
+        advance(parser, scanner);
+    }
+}
+
+static void declaration(VM* vm, parser* parser, scanner* scanner, chunk* chunk, bool can_assign)
+{
+    if (match(parser, scanner, TOKEN_VAR)) {
+        var_declaration(vm, parser, scanner, chunk, can_assign);
+    } else {
+        statement(vm, parser, scanner, chunk, can_assign);
+    }
+
+    if (parser->panic_mode) synchronize(parser, scanner);
+}
+
+static void statement(VM* vm, parser* parser, scanner* scanner, chunk* chunk, bool can_assign)
+{
+    if (match(parser, scanner, TOKEN_PRINT)) {
+        print_statement(vm, parser, scanner, chunk, can_assign);
+    } else {
+        expression_statement(vm, parser, scanner, chunk, can_assign);
+    }
+}
+
+bool compile(char *source, chunk *ch, VM* vm)
 {
     scanner *scanner = init_scanner(source);
     parser *p = (parser *)calloc(1, sizeof(parser));
@@ -322,8 +447,11 @@ bool compile(const char *source, chunk *ch, VM* vm)
     bool error;
 
     advance(p, scanner);
-    expression(vm, p, scanner, chunk);
-    consume(p, scanner, TOKEN_EOF, "Expect end of expression");
+    
+    while (!match(p, scanner, TOKEN_EOF)) {
+        declaration(vm, p, scanner, chunk, false);
+    }
+
     end_compiler(p, chunk);
 
     error = !p->had_error;

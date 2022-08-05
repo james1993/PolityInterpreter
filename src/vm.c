@@ -99,6 +99,29 @@ static interpret_result run(VM* vm)
             case OP_NIL: push(vm, NIL_VAL); break;
             case OP_TRUE: push(vm, BOOL_VAL(true)); break;
             case OP_FALSE: push(vm, BOOL_VAL(false));
+            case OP_POP: pop(vm); break;
+            case OP_GET_GLOBAL:
+                obj_string* global_name = AS_STRING(vm->chunk->constants.values[(*vm->ip++)]);
+                Value value;
+                if (!table_get(&vm->globals, global_name, &value)) {
+                    runtime_error(vm, "Undefined variable '%s'", global_name->chars);
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                push(vm, value);
+                break;
+            case OP_DEFINE_GLOBAL:
+                obj_string* global_def = AS_STRING(vm->chunk->constants.values[(*vm->ip++)]);
+                table_set(&vm->globals, global_def, peek(vm, 0));
+                pop(vm);
+                break;
+            case OP_SET_GLOBAL:
+                obj_string* global_set = AS_STRING(vm->chunk->constants.values[(*vm->ip++)]);
+                if (table_set(&vm->globals, global_set, peek(vm, 0))) {
+                    table_delete(&vm->globals, global_set);
+                    runtime_error(vm, "Undefined variable '%s'", global_set->chars);
+                    return INTERPRET_RUNTIME_ERROR;
+                }
+                break;
             case OP_EQUAL:
                 push(vm, BOOL_VAL(values_equal(pop(vm), pop(vm))));
                 break;
@@ -148,9 +171,12 @@ static interpret_result run(VM* vm)
                 }
                 push(vm, NUMBER_VAL(-AS_NUMBER(pop(vm))));
                 break;
-            case OP_RETURN:
+            case OP_PRINT: 
                 print_value(pop(vm));
                 printf("\n");
+                break;
+            case OP_RETURN:
+                /* Exit interpreter */
                 return INTERPRET_OK;
         }
     }
@@ -166,10 +192,15 @@ VM* init_vm()
     vm->strings.capacity = 0;
     vm->strings.entries = NULL;
 
+    Table* globals = &vm->globals;
+    globals->count = 0;
+    globals->capacity = 0;
+    globals->entries = NULL;
+
     return vm;
 }
 
-interpret_result interpret(VM* vm, const char* source)
+interpret_result interpret(VM* vm, char* source)
 {
     chunk* ch = (chunk*)calloc(1, sizeof(chunk));
 

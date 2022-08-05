@@ -1,20 +1,6 @@
 #include "common.h"
 #include "table.h"
 
-/*
-void init_table(Table* table)
-{
-    table->count = 0;
-    table->capacity = 0;
-    table->entries = NULL;
-}
-
-void free_table(Table* table)
-{
-    free(table->entries);
-}
-*/
-
 static Entry* find_entry(Entry* entries, int capacity, obj_string* key)
 {
     uint32_t index = key->hash % capacity;
@@ -66,7 +52,6 @@ static void adjust_capacity(Table* table, int capacity)
         table->count++;
     }
 
-    free(table->entries);
     table->entries = entries;
     table->capacity = capacity;
 }

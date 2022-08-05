@@ -24,14 +24,14 @@ typedef enum {
 } token_type;
 
 typedef struct {
-    const char* start;
-    const char* current;
+    char* start;
+    char* current;
     int line;
 } scanner;
 
 typedef struct {
     token_type type;
-    const char* start;
+    char* start;
     int length;
     int line;
 } token;
@@ -43,7 +43,7 @@ typedef struct {
     bool panic_mode;
 } parser;
 
-scanner* init_scanner(const char* source);
+scanner* init_scanner(char* source);
 token scan_token(scanner* s);
 
 #endif
