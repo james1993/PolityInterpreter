@@ -100,6 +100,14 @@ static interpret_result run(VM* vm)
             case OP_TRUE: push(vm, BOOL_VAL(true)); break;
             case OP_FALSE: push(vm, BOOL_VAL(false));
             case OP_POP: pop(vm); break;
+            case OP_GET_LOCAL:
+                uint8_t slot_get = (*vm->ip++);
+                push(vm, vm->stack[slot_get]);
+                break;
+            case OP_SET_LOCAL:
+                uint8_t slot_set = (*vm->ip++);
+                vm->stack[slot_set] = peek(vm, 0);
+                break;
             case OP_GET_GLOBAL:
                 obj_string* global_name = AS_STRING(vm->chunk->constants.values[(*vm->ip++)]);
                 Value value;

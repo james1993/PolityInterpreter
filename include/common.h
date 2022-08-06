@@ -10,6 +10,7 @@
 #include <stdarg.h>
 
 #define DEBUG
+#define UINT8_COUNT (UINT8_MAX + 1)
 
 typedef enum {
     OBJ_STRING,

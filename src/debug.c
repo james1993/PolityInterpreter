@@ -25,6 +25,14 @@ int disassemble_instruction(chunk* chunk, int offset)
         case OP_POP:
             printf("OP_POP");
             return offset + 1;
+        case OP_GET_LOCAL:
+            uint8_t local_get = chunk->code[offset + 1];
+            printf("%-16s %4d\n", "OP_GET_LOCAL", local_get);
+            return offset + 2;
+        case OP_SET_LOCAL:
+            uint8_t local_set = chunk->code[offset + 1];
+            printf("%-16s %4d\n", "OP_SET_LOCAL", local_set);
+            return offset + 2;
         case OP_GET_GLOBAL:
             uint8_t global_get = chunk->code[offset + 1];
             printf("%-16s %4d '%g'\n", "OP_GET_GLOBAL", global_get, AS_NUMBER(chunk->constants.values[global_get]));

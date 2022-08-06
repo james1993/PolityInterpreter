@@ -5,7 +5,18 @@
 #include "scanner.h"
 #include "chunk.h"
 
-typedef void (*parse_fn)(VM* vm, parser* p, scanner* s, chunk* c, bool can_assign);
+typedef struct {
+    token name;
+    int depth;
+} Local;
+
+typedef struct {
+    Local locals[UINT8_COUNT];
+    int local_count;
+    int scope_depth;
+} compiler;
+
+typedef void (*parse_fn)(VM* vm, parser* p, scanner* s, chunk* c, compiler* comp, bool can_assign);
 
 typedef enum {
     PREC_NONE,

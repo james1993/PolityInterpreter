@@ -5,12 +5,13 @@
 #include "table.h"
 
 static parse_rule *get_rule(token_type type);
-static void expression(VM* vm, parser *parser, scanner *scanner, chunk *chunk, bool can_assign);
-static void grouping(VM* vm, parser *parser, scanner *scanner, chunk *chunk, bool can_assign);
-static void binary(VM* vm, parser *parser, scanner *scanner, chunk *chunk, bool can_assign);
-static void statement(VM* vm, parser* parser, scanner* scanner, chunk* chunk, bool can_assign);
-static void declaration(VM* vm, parser* parser, scanner* scanner, chunk* chunk, bool can_assign);
+static void expression(VM* vm, parser *parser, scanner *scanner, chunk *chunk, compiler* compiler, bool can_assign);
+static void grouping(VM* vm, parser *parser, scanner *scanner, chunk *chunk, compiler* compiler, bool can_assign);
+static void binary(VM* vm, parser *parser, scanner *scanner, chunk *chunk, compiler* compiler, bool can_assign);
+static void statement(VM* vm, parser* parser, scanner* scanner, chunk* chunk, compiler* compiler, bool can_assign);
+static void declaration(VM* vm, parser* parser, scanner* scanner, chunk* chunk, compiler* compiler, bool can_assign);
 static uint8_t identifier_constant(VM* vm, parser* parser, chunk* chunk, token* name);
+static int resolve_local(parser* parser, compiler* compiler, token* name);
 
 static void error_at(parser *parser, token *token, const char *message)
 {
@@ -149,35 +150,44 @@ static void emit_constant(parser *parser, chunk *chunk, Value value)
     emit_bytes(parser, chunk, OP_CONSTANT, make_constant(parser, chunk, value));
 }
 
-static void number(VM* vm, parser *parser, scanner *scanner, chunk *chunk, bool can_assign)
+static void number(VM* vm, parser *parser, scanner *scanner, chunk *chunk, compiler* compiler, bool can_assign)
 {
     double value = strtod(parser->previous.start, NULL);
     emit_constant(parser, chunk, NUMBER_VAL(value));
 }
 
-static void string(VM* vm, parser* parser, scanner* scanner, chunk* chunk, bool can_assign)
+static void string(VM* vm, parser* parser, scanner* scanner, chunk* chunk, compiler* compiler, bool can_assign)
 {
     emit_constant(parser, chunk, OBJ_VAL(copy_string(vm, parser->previous.start + 1, parser->previous.length - 2)));
 }
 
-static void named_variable(VM* vm, parser* parser, scanner* scanner, chunk* chunk, token name, bool can_assign)
+static void named_variable(VM* vm, parser* parser, scanner* scanner, chunk* chunk, compiler* compiler, token name, bool can_assign)
 {
-    uint8_t arg = identifier_constant(vm, parser, chunk, &name);
+    uint8_t get_op, set_op;
+    int arg = resolve_local(parser, compiler, &name);
+    if (arg != -1) {
+        get_op = OP_GET_LOCAL;
+        set_op = OP_SET_LOCAL;
+    } else {
+        arg = identifier_constant(vm, parser, chunk, &name);
+        get_op = OP_GET_GLOBAL;
+        set_op = OP_SET_GLOBAL;
+    }
 
     if (can_assign && match(parser, scanner, TOKEN_EQUAL)) {
-        expression(vm, parser, scanner, chunk, can_assign);
-        emit_bytes(parser, chunk, OP_GET_GLOBAL, arg);
+        expression(vm, parser, scanner, chunk, compiler, can_assign);
+        emit_bytes(parser, chunk, set_op, (uint8_t)arg);
     } else {
-        emit_bytes(parser, chunk, OP_GET_GLOBAL, arg);
+        emit_bytes(parser, chunk, get_op, (uint8_t)arg);
     }
 }
 
-static void variable(VM* vm, parser* parser, scanner* scanner, chunk* chunk, bool can_assign)
+static void variable(VM* vm, parser* parser, scanner* scanner, chunk* chunk, compiler* compiler, bool can_assign)
 {
-    named_variable(vm, parser, scanner, chunk, parser->previous, can_assign);
+    named_variable(vm, parser, scanner, chunk, compiler, parser->previous, can_assign);
 }
 
-static void parse_precedence(VM* vm, parser *parser, scanner *scanner, chunk *chunk, precedence prec)
+static void parse_precedence(VM* vm, parser *parser, scanner *scanner, chunk *chunk, compiler* compiler, precedence prec)
 {
     advance(parser, scanner);
     parse_fn prefix_rule = get_rule(parser->previous.type)->prefix;
@@ -188,13 +198,13 @@ static void parse_precedence(VM* vm, parser *parser, scanner *scanner, chunk *ch
     }
 
     bool can_assign = prec <= PREC_ASSIGNMENT;
-    prefix_rule(vm, parser, scanner, chunk, can_assign);
+    prefix_rule(vm, parser, scanner, chunk, compiler, can_assign);
 
     while (prec <= get_rule(parser->current.type)->prec)
     {
         advance(parser, scanner);
         parse_fn infix_rule = get_rule(parser->previous.type)->infix;
-        infix_rule(vm, parser, scanner, chunk, can_assign);
+        infix_rule(vm, parser, scanner, chunk, compiler, can_assign);
     }
 
     if (can_assign && match(parser, scanner, TOKEN_EQUAL)) {
@@ -207,17 +217,73 @@ static uint8_t identifier_constant(VM* vm, parser* parser, chunk* chunk, token* 
     return make_constant(parser, chunk, OBJ_VAL(copy_string(vm, name->start, name->length)));
 }
 
-static uint8_t parse_variable(VM* vm, parser* parser, scanner* scanner, chunk* chunk, const char* message)
+static bool identifiers_equal(token* a, token* b)
+{
+    if (a->length != b->length) return false;
+    return memcmp(a->start, b->start, a->length) == 0;
+}
+
+static int resolve_local(parser* parser, compiler* compiler, token* name)
+{
+    for (int i = compiler->local_count - 1; i >= 0; i--) {
+        Local* local = &compiler->locals[i];
+        if (identifiers_equal(name, &local->name)) {
+            if (local->depth == -1) {
+                error(parser, "Can't read local variable in its own initializer");
+            }
+            return i;
+        }
+    }
+
+    return -1;
+}
+
+static void add_local(parser* parser, compiler* compiler, token name)
+{
+    if (compiler->local_count == UINT8_COUNT) {
+        error(parser, "Too many local variables in function");
+        return;
+    }
+
+    Local* local = &compiler->locals[compiler->local_count++];
+    local->name = name;
+    local->depth = -1;
+}
+
+static void declare_variable(parser* parser, compiler* compiler)
+{
+    if (compiler->scope_depth == 0) return;
+
+    token* name = &parser->previous;
+    for (int i = compiler->local_count - 1; i>= 0; i--) {
+        Local* local = &compiler->locals[i];
+        if (local->depth != -1 && local->depth < compiler->scope_depth) {
+            break;
+        }
+
+        if (identifiers_equal(name, &local->name)) {
+            error(parser, "Already variable with this name in this scope");
+        }
+    }
+
+    add_local(parser, compiler, *name);
+}
+
+static uint8_t parse_variable(VM* vm, parser* parser, scanner* scanner, chunk* chunk, compiler* compiler, const char* message)
 {
     consume(parser, scanner, TOKEN_IDENTIFIER, message);
+
+    declare_variable(parser, compiler);
+    if (compiler->scope_depth > 0) return 0;
+
     return identifier_constant(vm, parser, chunk, &parser->previous);
 }
 
-static void unary(VM* vm, parser *parser, scanner *scanner, chunk *chunk, bool can_assign)
+static void unary(VM* vm, parser *parser, scanner *scanner, chunk *chunk, compiler* compiler, bool can_assign)
 {
     token_type operator_type = parser->previous.type;
 
-    parse_precedence(vm, parser, scanner, chunk, PREC_UNARY);
+    parse_precedence(vm, parser, scanner, chunk, compiler, PREC_UNARY);
 
     switch (operator_type)
     {
@@ -241,7 +307,22 @@ static void end_compiler(parser *parser, chunk *chunk)
 #endif
 }
 
-static void literal(VM* vm, parser *parser, scanner *scanner, chunk *chunk, bool can_assign)
+static void begin_scope(compiler* compiler)
+{
+    compiler->scope_depth++;
+}
+
+static void end_scope(parser* parser, chunk* chunk, compiler* compiler)
+{
+    compiler->scope_depth--;
+
+    while (compiler->local_count > 0 && compiler->locals[compiler->local_count - 1].depth > compiler->scope_depth) {
+        emit_byte(parser, chunk, OP_POP);
+        compiler->local_count--;
+    }
+}
+
+static void literal(VM* vm, parser *parser, scanner *scanner, chunk *chunk, compiler* compiler, bool can_assign)
 {
     switch (parser->previous.type)
     {
@@ -307,11 +388,11 @@ static parse_rule *get_rule(token_type type)
     return &rules[type];
 }
 
-static void binary(VM* vm, parser *parser, scanner *scanner, chunk *chunk, bool can_assign)
+static void binary(VM* vm, parser *parser, scanner *scanner, chunk *chunk, compiler* compiler, bool can_assign)
 {
     token_type operator_type = parser->previous.type;
     parse_rule *rule = get_rule(operator_type);
-    parse_precedence(vm, parser, scanner, chunk, (precedence)(rule->prec + 1));
+    parse_precedence(vm, parser, scanner, chunk, compiler, (precedence)(rule->prec + 1));
 
     switch (operator_type)
     {
@@ -350,46 +431,64 @@ static void binary(VM* vm, parser *parser, scanner *scanner, chunk *chunk, bool 
     }
 }
 
-static void grouping(VM* vm, parser *parser, scanner *scanner, chunk *chunk, bool can_assign)
+static void grouping(VM* vm, parser *parser, scanner *scanner, chunk *chunk, compiler* compiler, bool can_assign)
 {
-    expression(vm, parser, scanner, chunk, can_assign);
+    expression(vm, parser, scanner, chunk, compiler, can_assign);
     consume(parser, scanner, TOKEN_RIGHT_PAREN, "Expect ')' after expression");
 }
 
-static void expression(VM* vm, parser *parser, scanner *scanner, chunk *chunk, bool can_assign)
+static void expression(VM* vm, parser *parser, scanner *scanner, chunk *chunk, compiler* compiler, bool can_assign)
 {
-    parse_precedence(vm, parser, scanner, chunk, PREC_ASSIGNMENT);
+    parse_precedence(vm, parser, scanner, chunk, compiler, PREC_ASSIGNMENT);
 }
 
-static void define_variable(parser* parser, chunk* chunk, uint8_t global)
+static void block(VM* vm, parser* parser, scanner* scanner, chunk* chunk, compiler* compiler, bool can_assign)
 {
+    while (!check(parser, TOKEN_RIGHT_BRACE) && !check(parser, TOKEN_EOF)) {
+        declaration(vm, parser, scanner, chunk, compiler, can_assign);
+    }
+
+    consume(parser, scanner, TOKEN_RIGHT_BRACE, "Expect '}' after block");
+}
+
+static void mark_initialized(compiler* compiler)
+{
+    compiler->locals[compiler->local_count - 1].depth = compiler->scope_depth;
+}
+
+static void define_variable(parser* parser, chunk* chunk, compiler* compiler, uint8_t global)
+{
+    if (compiler->scope_depth > 0) {
+        mark_initialized(compiler);
+        return;
+    }
     emit_bytes(parser, chunk, OP_DEFINE_GLOBAL, global);
 }
 
-static void var_declaration(VM* vm, parser* parser, scanner* scanner, chunk* chunk, bool can_assign)
+static void var_declaration(VM* vm, parser* parser, scanner* scanner, chunk* chunk, compiler* compiler, bool can_assign)
 {
-    uint8_t global = parse_variable(vm, parser, scanner, chunk, "Expect variable name");
+    uint8_t global = parse_variable(vm, parser, scanner, chunk, compiler, "Expect variable name");
 
     if (match(parser, scanner, TOKEN_EQUAL)) {
-        expression(vm, parser, scanner, chunk, can_assign);
+        expression(vm, parser, scanner, chunk, compiler, can_assign);
     } else {
         emit_byte(parser, chunk, OP_NIL);
     }
     consume(parser, scanner, TOKEN_SEMICOLON, "Expect ';' after variable declaration");
 
-    define_variable(parser, chunk, global);
+    define_variable(parser, chunk, compiler, global);
 }
 
-static void expression_statement(VM* vm, parser* parser, scanner* scanner, chunk* chunk, bool can_assign)
+static void expression_statement(VM* vm, parser* parser, scanner* scanner, chunk* chunk, compiler* compiler, bool can_assign)
 {
-    expression(vm, parser, scanner, chunk, can_assign);
+    expression(vm, parser, scanner, chunk, compiler, can_assign);
     consume(parser, scanner, TOKEN_SEMICOLON, "Expect ';' after expression");
     emit_byte(parser, chunk, OP_POP);
 }
 
-static void print_statement(VM* vm, parser* parser, scanner* scanner, chunk* chunk, bool can_assign)
+static void print_statement(VM* vm, parser* parser, scanner* scanner, chunk* chunk, compiler* compiler, bool can_assign)
 {
-    expression(vm, parser, scanner, chunk, can_assign);
+    expression(vm, parser, scanner, chunk, compiler, can_assign);
     consume(parser, scanner, TOKEN_SEMICOLON, "Expect ';' after value");
     emit_byte(parser, chunk, OP_PRINT);
 }
@@ -419,29 +518,34 @@ static void synchronize(parser* parser, scanner* scanner)
     }
 }
 
-static void declaration(VM* vm, parser* parser, scanner* scanner, chunk* chunk, bool can_assign)
+static void declaration(VM* vm, parser* parser, scanner* scanner, chunk* chunk, compiler* compiler, bool can_assign)
 {
     if (match(parser, scanner, TOKEN_VAR)) {
-        var_declaration(vm, parser, scanner, chunk, can_assign);
+        var_declaration(vm, parser, scanner, chunk, compiler, can_assign);
     } else {
-        statement(vm, parser, scanner, chunk, can_assign);
+        statement(vm, parser, scanner, chunk, compiler, can_assign);
     }
 
     if (parser->panic_mode) synchronize(parser, scanner);
 }
 
-static void statement(VM* vm, parser* parser, scanner* scanner, chunk* chunk, bool can_assign)
+static void statement(VM* vm, parser* parser, scanner* scanner, chunk* chunk, compiler* compiler, bool can_assign)
 {
     if (match(parser, scanner, TOKEN_PRINT)) {
-        print_statement(vm, parser, scanner, chunk, can_assign);
+        print_statement(vm, parser, scanner, chunk, compiler, can_assign);
+    } else if (match(parser, scanner, TOKEN_LEFT_BRACE)) {
+        begin_scope(compiler);
+        block(vm, parser, scanner, chunk, compiler, can_assign);
+        end_scope(parser, chunk, compiler);
     } else {
-        expression_statement(vm, parser, scanner, chunk, can_assign);
+        expression_statement(vm, parser, scanner, chunk, compiler, can_assign);
     }
 }
 
 bool compile(char *source, chunk *ch, VM* vm)
 {
     scanner *scanner = init_scanner(source);
+    compiler* c = (compiler*)calloc(1, sizeof(compiler));
     parser *p = (parser *)calloc(1, sizeof(parser));
     chunk *chunk = ch;
     bool error;
@@ -449,7 +553,7 @@ bool compile(char *source, chunk *ch, VM* vm)
     advance(p, scanner);
     
     while (!match(p, scanner, TOKEN_EOF)) {
-        declaration(vm, p, scanner, chunk, false);
+        declaration(vm, p, scanner, chunk, c, false);
     }
 
     end_compiler(p, chunk);
