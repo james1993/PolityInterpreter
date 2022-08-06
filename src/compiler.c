@@ -12,6 +12,7 @@ static void statement(VM* vm, parser* parser, scanner* scanner, chunk* chunk, co
 static void declaration(VM* vm, parser* parser, scanner* scanner, chunk* chunk, compiler* compiler, bool can_assign);
 static uint8_t identifier_constant(VM* vm, parser* parser, chunk* chunk, token* name);
 static int resolve_local(parser* parser, compiler* compiler, token* name);
+static void and_(VM* vm, parser* parser, scanner* scanner, chunk* chunk, compiler* compiler, bool can_assign);
 
 static void error_at(parser *parser, token *token, const char *message)
 {
@@ -128,6 +129,37 @@ static void emit_bytes(parser *parser, chunk *chunk, uint8_t byte1, uint8_t byte
     emit_byte(parser, chunk, byte2);
 }
 
+static int emit_jump(parser* parser, chunk* chunk, uint8_t instruction)
+{
+    emit_byte(parser, chunk, instruction);
+    emit_byte(parser, chunk, 0xFF);
+    emit_byte(parser, chunk, 0xFF);
+    return chunk->count - 2;
+}
+
+static void emit_loop(parser* parser, chunk* chunk, int loop_start)
+{
+    emit_byte(parser, chunk, OP_LOOP);
+
+    int offset = chunk->count - loop_start + 2;
+    if (offset > UINT16_MAX) error(parser, "Loop body too large");
+
+    emit_byte(parser, chunk, (offset >> 8) & 0xFF);
+    emit_byte(parser, chunk, offset & 0xFF);
+}
+
+static void patch_jump(parser* parser, chunk* chunk, int offset)
+{
+    int jump = chunk->count - offset - 2;
+
+    if (jump > UINT16_MAX) {
+        error(parser, "Too much code to jump over");
+    }
+
+    chunk->code[offset] = (jump >> 8) & 0xFF;
+    chunk->code[offset + 1] = jump & 0xFF;
+}
+
 static void emit_return(parser *parser, chunk *chunk)
 {
     emit_byte(parser, chunk, OP_RETURN);
@@ -154,6 +186,43 @@ static void number(VM* vm, parser *parser, scanner *scanner, chunk *chunk, compi
 {
     double value = strtod(parser->previous.start, NULL);
     emit_constant(parser, chunk, NUMBER_VAL(value));
+}
+
+static void parse_precedence(VM* vm, parser *parser, scanner *scanner, chunk *chunk, compiler* compiler, precedence prec)
+{
+    advance(parser, scanner);
+    parse_fn prefix_rule = get_rule(parser->previous.type)->prefix;
+    if (!prefix_rule)
+    {
+        error(parser, "Expect expression");
+        return;
+    }
+
+    bool can_assign = prec <= PREC_ASSIGNMENT;
+    prefix_rule(vm, parser, scanner, chunk, compiler, can_assign);
+
+    while (prec <= get_rule(parser->current.type)->prec)
+    {
+        advance(parser, scanner);
+        parse_fn infix_rule = get_rule(parser->previous.type)->infix;
+        infix_rule(vm, parser, scanner, chunk, compiler, can_assign);
+    }
+
+    if (can_assign && match(parser, scanner, TOKEN_EQUAL)) {
+        error(parser, "Invalid assignment target");
+    }
+}
+
+static void or_(VM* vm, parser *parser, scanner *scanner, chunk *chunk, compiler* compiler, bool can_assign)
+{
+    int else_jump = emit_jump(parser, chunk, OP_JUMP_IF_FALSE);
+    int end_jump = emit_jump(parser, chunk, OP_JUMP);
+
+    patch_jump(parser, chunk, else_jump);
+    emit_byte(parser, chunk, OP_POP);
+
+    parse_precedence(vm, parser, scanner, chunk, compiler, PREC_OR);
+    patch_jump(parser, chunk, end_jump);
 }
 
 static void string(VM* vm, parser* parser, scanner* scanner, chunk* chunk, compiler* compiler, bool can_assign)
@@ -185,31 +254,6 @@ static void named_variable(VM* vm, parser* parser, scanner* scanner, chunk* chun
 static void variable(VM* vm, parser* parser, scanner* scanner, chunk* chunk, compiler* compiler, bool can_assign)
 {
     named_variable(vm, parser, scanner, chunk, compiler, parser->previous, can_assign);
-}
-
-static void parse_precedence(VM* vm, parser *parser, scanner *scanner, chunk *chunk, compiler* compiler, precedence prec)
-{
-    advance(parser, scanner);
-    parse_fn prefix_rule = get_rule(parser->previous.type)->prefix;
-    if (!prefix_rule)
-    {
-        error(parser, "Expect expression");
-        return;
-    }
-
-    bool can_assign = prec <= PREC_ASSIGNMENT;
-    prefix_rule(vm, parser, scanner, chunk, compiler, can_assign);
-
-    while (prec <= get_rule(parser->current.type)->prec)
-    {
-        advance(parser, scanner);
-        parse_fn infix_rule = get_rule(parser->previous.type)->infix;
-        infix_rule(vm, parser, scanner, chunk, compiler, can_assign);
-    }
-
-    if (can_assign && match(parser, scanner, TOKEN_EQUAL)) {
-        error(parser, "Invalid assignment target");
-    }
 }
 
 static uint8_t identifier_constant(VM* vm, parser* parser, chunk* chunk, token* name)
@@ -363,7 +407,7 @@ parse_rule rules[] = {
     [TOKEN_IDENTIFIER] = {variable, NULL, PREC_NONE},
     [TOKEN_STRING] = {string, NULL, PREC_NONE},
     [TOKEN_NUMBER] = {number, NULL, PREC_NONE},
-    [TOKEN_AND] = {NULL, NULL, PREC_NONE},
+    [TOKEN_AND] = {NULL, and_, PREC_AND},
     [TOKEN_CLASS] = {NULL, NULL, PREC_NONE},
     [TOKEN_ELSE] = {NULL, NULL, PREC_NONE},
     [TOKEN_FALSE] = {literal, NULL, PREC_NONE},
@@ -371,7 +415,7 @@ parse_rule rules[] = {
     [TOKEN_FUN] = {NULL, NULL, PREC_NONE},
     [TOKEN_IF] = {NULL, NULL, PREC_NONE},
     [TOKEN_NIL] = {literal, NULL, PREC_NONE},
-    [TOKEN_OR] = {NULL, NULL, PREC_NONE},
+    [TOKEN_OR] = {NULL, or_, PREC_OR},
     [TOKEN_PRINT] = {NULL, NULL, PREC_NONE},
     [TOKEN_RETURN] = {NULL, NULL, PREC_NONE},
     [TOKEN_SUPER] = {NULL, NULL, PREC_NONE},
@@ -465,6 +509,16 @@ static void define_variable(parser* parser, chunk* chunk, compiler* compiler, ui
     emit_bytes(parser, chunk, OP_DEFINE_GLOBAL, global);
 }
 
+static void and_(VM* vm, parser* parser, scanner* scanner, chunk* chunk, compiler* compiler, bool can_assign)
+{
+    int end_jump = emit_jump(parser, chunk, OP_JUMP_IF_FALSE);
+
+    emit_byte(parser, chunk, OP_POP);
+    parse_precedence(vm, parser, scanner, chunk, compiler, PREC_AND);
+
+    patch_jump(parser, chunk, end_jump);
+}
+
 static void var_declaration(VM* vm, parser* parser, scanner* scanner, chunk* chunk, compiler* compiler, bool can_assign)
 {
     uint8_t global = parse_variable(vm, parser, scanner, chunk, compiler, "Expect variable name");
@@ -483,6 +537,74 @@ static void expression_statement(VM* vm, parser* parser, scanner* scanner, chunk
 {
     expression(vm, parser, scanner, chunk, compiler, can_assign);
     consume(parser, scanner, TOKEN_SEMICOLON, "Expect ';' after expression");
+    emit_byte(parser, chunk, OP_POP);
+}
+
+static void for_statement(VM* vm, parser* parser, scanner* scanner, chunk* chunk, compiler* compiler, bool can_assign)
+{
+    begin_scope(compiler);
+    consume(parser, scanner, TOKEN_LEFT_PAREN, "Expect '(' after 'for'");
+    if (match(parser, scanner, TOKEN_SEMICOLON)) {
+        /* No initializer */
+    } else if (match(parser, scanner, TOKEN_VAR)) {
+        var_declaration(vm, parser, scanner, chunk, compiler, can_assign);
+    } else {
+        expression_statement(vm, parser, scanner, chunk, compiler, can_assign);
+    }
+
+    int loop_start = chunk->count;
+
+    int exit_jump = -1;
+    if (!match(parser, scanner, TOKEN_SEMICOLON)) {
+        expression(vm, parser, scanner, chunk, compiler, can_assign);
+        consume(parser, scanner, TOKEN_SEMICOLON, "Expect ';' after loop condition");
+
+        /* Jump out of the loop if the condition is false */
+        exit_jump = emit_jump(parser, chunk, OP_JUMP_IF_FALSE);
+        emit_byte(parser, chunk, OP_POP);
+    }
+    
+    if (!match(parser, scanner, TOKEN_RIGHT_PAREN)) {
+        int body_jump = emit_jump(parser, chunk, OP_JUMP);
+
+        int increment_start = chunk->count;
+        expression(vm, parser, scanner, chunk, compiler, can_assign);
+        emit_byte(parser, chunk, OP_POP);
+        consume(parser, scanner, TOKEN_RIGHT_PAREN, "Expect ')' after for clauses");
+
+        emit_loop(parser, chunk, loop_start);
+        loop_start = increment_start;
+        patch_jump(parser, chunk, body_jump);
+    }
+
+    statement(vm, parser, scanner, chunk, compiler, can_assign);
+
+    emit_loop(parser, chunk, loop_start);
+
+    if (exit_jump != -1) {
+        patch_jump(parser, chunk, exit_jump);
+        emit_byte(parser, chunk, OP_POP);
+    }
+
+    end_scope(parser, chunk, compiler);
+}
+
+static void while_statement(VM* vm, parser* parser, scanner* scanner, chunk* chunk, compiler* compiler, bool can_assign)
+{
+    int loop_start = chunk->count;
+
+    consume(parser, scanner, TOKEN_LEFT_PAREN, "Expect '(' after 'while'");
+    expression(vm, parser, scanner, chunk, compiler, can_assign);
+    consume(parser, scanner, TOKEN_RIGHT_PAREN, "Expect ')' after 'while'");
+
+    int exit_jump = emit_jump(parser, chunk, OP_JUMP_IF_FALSE);
+
+    emit_byte(parser, chunk, OP_POP);
+    statement(vm, parser, scanner, chunk, compiler, can_assign);
+
+    emit_loop(parser, chunk, loop_start);
+
+    patch_jump(parser, chunk, exit_jump);
     emit_byte(parser, chunk, OP_POP);
 }
 
@@ -529,10 +651,35 @@ static void declaration(VM* vm, parser* parser, scanner* scanner, chunk* chunk, 
     if (parser->panic_mode) synchronize(parser, scanner);
 }
 
+static void if_statement(VM* vm, parser* parser, scanner* scanner, chunk* chunk, compiler* compiler, bool can_assign)
+{
+    consume(parser, scanner, TOKEN_LEFT_PAREN, "Expect '(' after 'if'");
+    expression(vm, parser, scanner, chunk, compiler, can_assign);
+    consume(parser, scanner, TOKEN_RIGHT_PAREN, "Expect ')' after condition");
+
+    int then_jump = emit_jump(parser, chunk, OP_JUMP_IF_FALSE);
+    emit_byte(parser, chunk, OP_POP);
+    statement(vm, parser, scanner, chunk, compiler, can_assign);
+
+    int else_jump = emit_jump(parser, chunk, OP_JUMP);
+
+    patch_jump(parser, chunk, then_jump);
+    emit_byte(parser, chunk, OP_POP);
+
+    if (match(parser, scanner, TOKEN_ELSE)) statement(vm, parser, scanner, chunk, compiler, can_assign);
+    patch_jump(parser, chunk, else_jump);
+}
+
 static void statement(VM* vm, parser* parser, scanner* scanner, chunk* chunk, compiler* compiler, bool can_assign)
 {
     if (match(parser, scanner, TOKEN_PRINT)) {
         print_statement(vm, parser, scanner, chunk, compiler, can_assign);
+    } else if (match(parser, scanner, TOKEN_FOR)) {
+        for_statement(vm, parser, scanner, chunk, compiler, can_assign);
+    } else if (match(parser, scanner, TOKEN_IF)) {
+        if_statement(vm, parser, scanner, chunk, compiler, can_assign);
+    } else if (match(parser, scanner, TOKEN_WHILE)) {
+        while_statement(vm, parser, scanner, chunk, compiler, can_assign);
     } else if (match(parser, scanner, TOKEN_LEFT_BRACE)) {
         begin_scope(compiler);
         block(vm, parser, scanner, chunk, compiler, can_assign);

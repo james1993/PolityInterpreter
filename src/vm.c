@@ -183,6 +183,18 @@ static interpret_result run(VM* vm)
                 print_value(pop(vm));
                 printf("\n");
                 break;
+            case OP_JUMP:
+                uint16_t offset_jump = (vm->ip += 2, (uint16_t)((vm->ip[-2] << 8) | vm->ip[-1]));
+                vm->ip += offset_jump;
+                break;
+            case OP_JUMP_IF_FALSE:
+                uint16_t offset = (vm->ip += 2, (uint16_t)((vm->ip[-2] << 8) | vm->ip[-1]));
+                if (is_falsey(peek(vm, 0))) vm->ip += offset;
+                break;
+            case OP_LOOP:
+                uint16_t offset_loop = (vm->ip += 2, (uint16_t)((vm->ip[-2] << 8) | vm->ip[-1]));
+                vm->ip -= offset_loop;
+                break;
             case OP_RETURN:
                 /* Exit interpreter */
                 return INTERPRET_OK;
