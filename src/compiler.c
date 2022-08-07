@@ -708,5 +708,6 @@ bool compile(char *source, chunk *ch, VM* vm)
     error = !p->had_error;
     free(scanner);
     free(p);
+    free(c);
     return error;
 }

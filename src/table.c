@@ -35,6 +35,7 @@ bool table_get(Table* table, obj_string* key, Value* value)
 
 static void adjust_capacity(Table* table, int capacity)
 {
+    Entry* entries_old = table->entries;
     Entry* entries = (Entry*)malloc(sizeof(Entry) * capacity);
     for (int i = 0; i < capacity; i++) {
         entries[i].key = NULL;
@@ -54,6 +55,7 @@ static void adjust_capacity(Table* table, int capacity)
 
     table->entries = entries;
     table->capacity = capacity;
+    free(entries_old);
 }
 
 bool table_set(Table* table, obj_string* key, Value value)
@@ -85,16 +87,6 @@ bool table_delete(Table* table, obj_string* key)
     entry->value = BOOL_VAL(true);
 
     return true;
-}
-
-void table_add_all(Table* from, Table* to)
-{
-    for (int i = 0; i < from->capacity; i++) {
-        Entry* entry = &from->entries[i];
-        if (entry->key != NULL) {
-            table_set(to, entry->key, entry->value);
-        }
-    }
 }
 
 obj_string* table_find_string(Table* table, const char* chars, int length, uint32_t hash)

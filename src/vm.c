@@ -3,7 +3,12 @@
 #include "debug.h"
 #include "compiler.h"
 
-static void runtime_error(VM* vm, const char* format, ...)
+static inline void push(VM* vm, Value value) { *(vm->stack_top++) = value; }
+static inline Value pop(VM* vm) { return *(--vm->stack_top); }
+static inline Value peek(VM* vm, int distance) { return vm->stack_top[-1 - distance]; }
+static inline bool is_falsey(Value val) { return IS_NIL(val) || (IS_BOOL(val) && !AS_BOOL(val)); }
+
+static interpret_result runtime_error(VM* vm, const char* format, ...)
 {
     va_list args;
     va_start(args, format);
@@ -14,14 +19,33 @@ static void runtime_error(VM* vm, const char* format, ...)
     size_t instruction = vm->ip - vm->chunk->code - 1;
     int line = vm->chunk->lines[instruction];
     fprintf(stderr, "[line %d] in script\n", line);
+
+    return INTERPRET_RUNTIME_ERROR;
+}
+
+static bool values_equal(Value a, Value b)
+{
+    if (a.type != b.type) return false;
+
+    switch (a.type) {
+        case VAL_BOOL:
+            return AS_BOOL(a) == AS_BOOL(b);
+        case VAL_NIL:
+            return true;
+        case VAL_NUMBER:
+            return AS_NUMBER(a) == AS_NUMBER(b);
+        case VAL_OBJ:
+            return AS_STRING(a)->length == AS_STRING(b)->length &&
+                    memcmp(AS_STRING(a)->chars, AS_STRING(b)->chars, AS_STRING(a)->length) == 0;
+        default:
+            return false;
+    }
 }
 
 static interpret_result check(VM* vm)
 {
-    if (!IS_NUMBER(peek(vm, 0)) || !IS_NUMBER(peek(vm, 1))) {
-        runtime_error(vm, "Operands must be numbers");
-        return INTERPRET_RUNTIME_ERROR;
-    }
+    if (!IS_NUMBER(peek(vm, 0)) || !IS_NUMBER(peek(vm, 1)))
+        return runtime_error(vm, "Operands must be numbers");
 
     return INTERPRET_OK;
 }
@@ -31,8 +55,10 @@ static void print_value(Value value)
     switch (value.type) {
         case VAL_BOOL:
             printf(AS_BOOL(value) ? "true" : "false"); break;
-        case VAL_NIL: printf("nil"); break;
-        case VAL_NUMBER: printf("%g", AS_NUMBER(value)); break;
+        case VAL_NIL:
+            printf("nil"); break;
+        case VAL_NUMBER:
+            printf("%g", AS_NUMBER(value)); break;
         case VAL_OBJ: 
             switch (OBJ_TYPE(value)) {
                 case OBJ_STRING:
@@ -40,23 +66,6 @@ static void print_value(Value value)
                     break;
             }
             break;
-    }
-}
-
-bool values_equal(Value a, Value b)
-{
-    if (a.type != b.type) return false;
-
-    switch (a.type) {
-        case VAL_BOOL:      return AS_BOOL(a) == AS_BOOL(b);
-        case VAL_NIL:       return true;
-        case VAL_NUMBER:    return AS_NUMBER(a) == AS_NUMBER(b);
-        case VAL_OBJ:
-            obj_string* a_string = AS_STRING(a);
-            obj_string* b_string = AS_STRING(b);
-            return a_string->length == b_string->length && memcmp(a_string->chars, b_string->chars, a_string->length) == 0;
-        default:
-            return false;
     }
 }
 
@@ -79,42 +88,37 @@ static void concatenate(VM* vm)
 static interpret_result run(VM* vm)
 {
     double a, b;
-    interpret_result result = INTERPRET_OK;
-    for(;;) {
+    uint8_t instruction;
 
-#ifdef DEBUG
-        printf("        ");
-        for (Value* slot = vm->stack; slot < vm->stack_top; slot++)
-            print_value(*slot);
-        printf("\n");
-        disassemble_instruction(vm->chunk, (int)(vm->ip - vm->chunk->code));
-#endif
-
-        uint8_t instruction;
+    while (1) {
         switch (instruction = (*vm->ip++)) {
             case OP_CONSTANT:
                 Value constant = vm->chunk->constants.values[(*vm->ip++)];
                 push(vm, constant);
                 break;
-            case OP_NIL: push(vm, NIL_VAL); break;
-            case OP_TRUE: push(vm, BOOL_VAL(true)); break;
-            case OP_FALSE: push(vm, BOOL_VAL(false));
-            case OP_POP: pop(vm); break;
+            case OP_NIL:
+                push(vm, NIL_VAL);
+                break;
+            case OP_TRUE:
+                push(vm, BOOL_VAL(true));
+                break;
+            case OP_FALSE:
+                push(vm, BOOL_VAL(false));
+                break;
+            case OP_POP:
+                pop(vm);
+                break;
             case OP_GET_LOCAL:
-                uint8_t slot_get = (*vm->ip++);
-                push(vm, vm->stack[slot_get]);
+                push(vm, vm->stack[(*vm->ip++)]);
                 break;
             case OP_SET_LOCAL:
-                uint8_t slot_set = (*vm->ip++);
-                vm->stack[slot_set] = peek(vm, 0);
+                vm->stack[(*vm->ip++)] = peek(vm, 0);
                 break;
             case OP_GET_GLOBAL:
                 obj_string* global_name = AS_STRING(vm->chunk->constants.values[(*vm->ip++)]);
                 Value value;
-                if (!table_get(&vm->globals, global_name, &value)) {
-                    runtime_error(vm, "Undefined variable '%s'", global_name->chars);
-                    return INTERPRET_RUNTIME_ERROR;
-                }
+                if (!table_get(&vm->globals, global_name, &value))
+                    return runtime_error(vm, "Undefined variable '%s'", global_name->chars);
                 push(vm, value);
                 break;
             case OP_DEFINE_GLOBAL:
@@ -126,46 +130,50 @@ static interpret_result run(VM* vm)
                 obj_string* global_set = AS_STRING(vm->chunk->constants.values[(*vm->ip++)]);
                 if (table_set(&vm->globals, global_set, peek(vm, 0))) {
                     table_delete(&vm->globals, global_set);
-                    runtime_error(vm, "Undefined variable '%s'", global_set->chars);
-                    return INTERPRET_RUNTIME_ERROR;
+                    return runtime_error(vm, "Undefined variable '%s'", global_set->chars);
                 }
                 break;
             case OP_EQUAL:
                 push(vm, BOOL_VAL(values_equal(pop(vm), pop(vm))));
                 break;
             case OP_GREATER:
-                if (check(vm)) return check(vm);
+                if (check(vm))
+                    return INTERPRET_RUNTIME_ERROR;
                 b = AS_NUMBER(pop(vm)); a = AS_NUMBER(pop(vm));
+
                 push(vm, NUMBER_VAL(a > b));
                 break;
             case OP_LESS:
-                if (check(vm)) return check(vm);
+                if (check(vm))
+                    return INTERPRET_RUNTIME_ERROR;
+
                 push(vm, NUMBER_VAL(a < b));
                 break;
             case OP_ADD:
-                if (IS_STRING(peek(vm, 0)) && IS_STRING(peek(vm, 1))) {
+                if (IS_STRING(peek(vm, 0)) && IS_STRING(peek(vm, 1)))
                     concatenate(vm);
-                } else if (IS_NUMBER(peek(vm, 0)) && IS_NUMBER(peek(vm, 1))) {
-                    double b = AS_NUMBER(pop(vm));
-                    double a = AS_NUMBER(pop(vm));
-                    push(vm, NUMBER_VAL(a + b));
-                } else {
-                    runtime_error(vm, "Operands must be two numbers or two strings\n");
-                    return INTERPRET_RUNTIME_ERROR;
-                }
+                else if (IS_NUMBER(peek(vm, 0)) && IS_NUMBER(peek(vm, 1)))
+                    push(vm, NUMBER_VAL(AS_NUMBER(pop(vm)) + AS_NUMBER(pop(vm))));
+                else
+                    return runtime_error(vm, "Operands must be two numbers or two strings\n");
                 break;
             case OP_SUBTRACT:
-                if (check(vm)) return check(vm);
+                if (check(vm))
+                    return INTERPRET_RUNTIME_ERROR;
+
                 b = AS_NUMBER(pop(vm)); a = AS_NUMBER(pop(vm));
                 push(vm, NUMBER_VAL(a - b));
                 break;
             case OP_MULTIPLY:
-                if (check(vm)) return check(vm);
-                b = AS_NUMBER(pop(vm)); a = AS_NUMBER(pop(vm));
-                push(vm, NUMBER_VAL(a * b));
+                if (check(vm))
+                    return INTERPRET_RUNTIME_ERROR;
+
+                push(vm, NUMBER_VAL(AS_NUMBER(pop(vm)) * AS_NUMBER(pop(vm))));
                 break;
             case OP_DIVIDE:
-                if (check(vm)) return check(vm);
+                if (check(vm))
+                    return INTERPRET_RUNTIME_ERROR;
+
                 b = AS_NUMBER(pop(vm)); a = AS_NUMBER(pop(vm));
                 push(vm, NUMBER_VAL(a / b));
                 break;
@@ -173,10 +181,9 @@ static interpret_result run(VM* vm)
                 push(vm, BOOL_VAL(is_falsey(pop(vm))));
                 break;
             case OP_NEGATE:
-                if (!IS_NUMBER(peek(vm, 0))) {
-                    runtime_error(vm, "Operand must be a number");
-                    return INTERPRET_RUNTIME_ERROR;
-                }
+                if (!IS_NUMBER(peek(vm, 0)))
+                    return runtime_error(vm, "Operand must be a number");
+
                 push(vm, NUMBER_VAL(-AS_NUMBER(pop(vm))));
                 break;
             case OP_PRINT: 
@@ -184,16 +191,14 @@ static interpret_result run(VM* vm)
                 printf("\n");
                 break;
             case OP_JUMP:
-                uint16_t offset_jump = (vm->ip += 2, (uint16_t)((vm->ip[-2] << 8) | vm->ip[-1]));
-                vm->ip += offset_jump;
+                vm->ip += (vm->ip += 2, (uint16_t)((vm->ip[-2] << 8) | vm->ip[-1]));
                 break;
             case OP_JUMP_IF_FALSE:
-                uint16_t offset = (vm->ip += 2, (uint16_t)((vm->ip[-2] << 8) | vm->ip[-1]));
-                if (is_falsey(peek(vm, 0))) vm->ip += offset;
+                if (is_falsey(peek(vm, 0)))
+                    vm->ip += (vm->ip += 2, (uint16_t)((vm->ip[-2] << 8) | vm->ip[-1]));
                 break;
             case OP_LOOP:
-                uint16_t offset_loop = (vm->ip += 2, (uint16_t)((vm->ip[-2] << 8) | vm->ip[-1]));
-                vm->ip -= offset_loop;
+                vm->ip -= (vm->ip += 2, (uint16_t)((vm->ip[-2] << 8) | vm->ip[-1]));
                 break;
             case OP_RETURN:
                 /* Exit interpreter */
@@ -205,17 +210,15 @@ static interpret_result run(VM* vm)
 VM* init_vm()
 {
     VM* vm = (VM*)malloc(sizeof(VM));
+
     vm->stack_top = vm->stack;
     vm->objects = NULL;
-
     vm->strings.count = 0;
     vm->strings.capacity = 0;
     vm->strings.entries = NULL;
-
-    Table* globals = &vm->globals;
-    globals->count = 0;
-    globals->capacity = 0;
-    globals->entries = NULL;
+    vm->globals.count = 0;
+    vm->globals.capacity = 0;
+    vm->globals.entries = NULL;
 
     return vm;
 }
