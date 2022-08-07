@@ -220,6 +220,27 @@ VM* init_vm()
     return vm;
 }
 
+void free_vm(VM* vm)
+{
+    /* Free allocated strings */
+	struct Obj* object = vm->objects;
+	while (object != NULL) {
+		struct Obj* next = object->next;
+		switch (object->type) {
+			case OBJ_STRING:
+				obj_string* str = (obj_string*)object;
+				free(str->chars);
+				free(str);
+		}
+		object = next;
+	}
+
+	/* Free virtual machine */
+	free(vm->strings.entries);
+	free(vm->globals.entries);
+	free(vm);
+}
+
 interpret_result interpret(VM* vm, char* source)
 {
     chunk* ch = (chunk*)calloc(1, sizeof(chunk));

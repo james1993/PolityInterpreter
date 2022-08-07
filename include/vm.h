@@ -24,6 +24,7 @@ typedef enum {
 } interpret_result;
 
 VM* init_vm();
+void free_vm();
 bool values_equal(Value a, Value b);
 interpret_result interpret(VM* vm, char* source);
 static inline void push(VM* vm, Value value) { *(vm->stack_top++) = value; }
