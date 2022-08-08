@@ -30,10 +30,10 @@ typedef struct {
 typedef struct {
     token name;
     int depth;
-} Local;
+} local;
 
 typedef struct {
-    Local locals[UINT8_COUNT];
+    local locals[UINT8_COUNT];
     int local_count;
     int scope_depth;
 } compiler;
@@ -57,12 +57,12 @@ typedef struct {
         double number;
         struct Obj* obj;
     } as;
-} Value;
+} value;
 
 typedef struct {
     int capacity;
     int count;
-    Value* values;
+    value* values;
 } value_array;
 
 typedef struct {
@@ -75,22 +75,22 @@ typedef struct {
 
 typedef struct {
     obj_string* key;
-    Value value;
-} Entry;
+    value value;
+} entry;
 
 typedef struct {
     int count;
     int capacity;
-    Entry* entries;
-} Table;
+    entry* entries;
+} table;
 
 typedef struct {
     chunk* chunk;
     uint8_t* ip; /* instruction pointer */
-    Value stack[STACK_MAX];
-    Value* stack_top;
-    Table globals;
-    Table strings;
+    value stack[STACK_MAX];
+    value* stack_top;
+    table globals;
+    table strings;
     struct Obj* objects;
 } VM;
 
@@ -121,12 +121,12 @@ token scan_token(scanner* s);
 bool compile(char* source, polity_interpreter* interpreter);
 obj_string* allocate_string(VM* vm, char* chars, int length, uint32_t hash);
 uint32_t hash_string(const char* key, int length);
-bool table_get(Table* table, obj_string* key, Value* value);
-bool table_set(Table* table, obj_string* key, Value value);
-bool table_delete(Table* table, obj_string* key);
-obj_string* table_find_string(Table* table, const char* chars, int length, uint32_t hash);
+bool table_get(table* table, obj_string* key, value* value);
+bool table_set(table* table, obj_string* key, value value);
+bool table_delete(table* table, obj_string* key);
+obj_string* table_find_string(table* table, const char* chars, int length, uint32_t hash);
 void write_chunk(chunk* chunk, uint8_t byte, int line);
 void free_chunk(chunk* chunk);
-int add_constant(chunk* chunk, Value value);
+int add_constant(chunk* chunk, value value);
 
 #endif

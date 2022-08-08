@@ -149,9 +149,9 @@ static void patch_jump(polity_interpreter* interpreter, int offset)
     chunk->code[offset + 1] = jump & 0xFF;
 }
 
-static uint8_t make_constant(polity_interpreter* interpreter, Value value)
+static uint8_t make_constant(polity_interpreter* interpreter, value val)
 {
-    int constant = add_constant(interpreter->chunk, value);
+    int constant = add_constant(interpreter->chunk, val);
     if (constant > UINT8_MAX) {
         error(interpreter->parser, "Too many constants in one chunk");
         return 0;
@@ -160,9 +160,9 @@ static uint8_t make_constant(polity_interpreter* interpreter, Value value)
     return (uint8_t)constant;
 }
 
-static void emit_constant(polity_interpreter* interpreter, Value value)
+static void emit_constant(polity_interpreter* interpreter, value val)
 {
-    emit_bytes(interpreter, OP_CONSTANT, make_constant(interpreter, value));
+    emit_bytes(interpreter, OP_CONSTANT, make_constant(interpreter, val));
 }
 
 static void number(polity_interpreter* interpreter)
@@ -253,7 +253,7 @@ static bool identifiers_equal(token* a, token* b)
 static int resolve_local(polity_interpreter* interpreter, token* name)
 {
     for (int i = interpreter->compiler->local_count - 1; i >= 0; i--) {
-        Local* local = &interpreter->compiler->locals[i];
+        local* local = &interpreter->compiler->locals[i];
         if (identifiers_equal(name, &local->name)) {
             if (local->depth == -1)
                 error(interpreter->parser, "Can't read local variable in its own initializer");
@@ -272,7 +272,7 @@ static void add_local(polity_interpreter* interpreter, token name)
         return;
     }
 
-    Local* local = &interpreter->compiler->locals[interpreter->compiler->local_count++];
+    local* local = &interpreter->compiler->locals[interpreter->compiler->local_count++];
     local->name = name;
     local->depth = -1;
 }
@@ -287,7 +287,7 @@ static void declare_variable(polity_interpreter* interpreter)
 
     token* name = &parser->previous;
     for (int i = compiler->local_count - 1; i>= 0; i--) {
-        Local* local = &compiler->locals[i];
+        local* local = &compiler->locals[i];
         if (local->depth != -1 && local->depth < compiler->scope_depth)
             break;
 
@@ -721,24 +721,24 @@ void free_chunk(chunk* chunk)
     free(chunk);
 }
 
-int add_constant(chunk* chunk, Value value)
+int add_constant(chunk* chunk, value val)
 {
     if (chunk->constants.capacity < chunk->constants.count + 1) {
         chunk->constants.capacity = (chunk->constants.capacity) < 8 ? 8 : (chunk->constants.capacity) * 2;
-        chunk->constants.values = (Value*)realloc(chunk->constants.values, sizeof(Value) * (chunk->constants.capacity));
+        chunk->constants.values = (value*)realloc(chunk->constants.values, sizeof(value) * (chunk->constants.capacity));
     }
 
-    chunk->constants.values[chunk->constants.count++] = value;
+    chunk->constants.values[chunk->constants.count++] = val;
     return chunk->constants.count - 1;
 }
 
 /* TABLE OPERATIONS */  
-static Entry* find_entry(Entry* entries, int capacity, obj_string* key)
+static entry* find_entry(entry* entries, int capacity, obj_string* key)
 {
     uint32_t index = key->hash % capacity;
-    Entry* tombstone = NULL;
+    entry* tombstone = NULL;
     for (;;) {
-        Entry* entry = &entries[index];
+        entry* entry = &entries[index];
 
         if (entry->key == NULL) {
             if (IS_NIL(entry->value)) {
@@ -754,21 +754,21 @@ static Entry* find_entry(Entry* entries, int capacity, obj_string* key)
     }
 }
 
-bool table_get(Table* table, obj_string* key, Value* value)
+bool table_get(table* table, obj_string* key, value* val)
 {
     if (table->count == 0) return false;
 
-    Entry* entry = find_entry(table->entries, table->capacity, key);
+    entry* entry = find_entry(table->entries, table->capacity, key);
     if (entry->key == NULL) return false;
 
-    *value = entry->value;
+    *val = entry->value;
     return true;
 }
 
-static void adjust_capacity(Table* table, int capacity)
+static void adjust_capacity(table* table, int capacity)
 {
-    Entry* entries_old = table->entries;
-    Entry* entries = (Entry*)malloc(sizeof(Entry) * capacity);
+    entry* entries_old = table->entries;
+    entry* entries = (entry*)malloc(sizeof(entry) * capacity);
     for (int i = 0; i < capacity; i++) {
         entries[i].key = NULL;
         entries[i].value = NIL_VAL;
@@ -776,12 +776,12 @@ static void adjust_capacity(Table* table, int capacity)
 
     table->count = 0;
     for (int i = 0; i < table->capacity; i++) {
-        Entry* entry = &table->entries[i];
-        if (entry->key == NULL) continue;
+        entry* table_entry = &table->entries[i];
+        if (table_entry->key == NULL) continue;
 
-        Entry* dest = find_entry(entries, capacity, entry->key);
-        dest->key = entry->key;
-        dest->value = entry->value;
+        entry* dest = find_entry(entries, capacity, table_entry->key);
+        dest->key = table_entry->key;
+        dest->value = table_entry->value;
         table->count++;
     }
 
@@ -790,7 +790,7 @@ static void adjust_capacity(Table* table, int capacity)
     free(entries_old);
 }
 
-bool table_set(Table* table, obj_string* key, Value value)
+bool table_set(table* table, obj_string* key, value val)
 {
     if (table->count + 1 > table->capacity * TABLE_MAX_LOAD)
     {
@@ -798,21 +798,21 @@ bool table_set(Table* table, obj_string* key, Value value)
         adjust_capacity(table, capacity);
     }
 
-    Entry* entry = find_entry(table->entries, table->capacity, key);
+    entry* entry = find_entry(table->entries, table->capacity, key);
 
     bool is_new_key = entry->key == NULL;
     if (is_new_key && IS_NIL(entry->value)) table->count++;
 
     entry->key = key;
-    entry->value = value;
+    entry->value = val;
     return is_new_key;
 }
 
-bool table_delete(Table* table, obj_string* key)
+bool table_delete(table* table, obj_string* key)
 {
     if (table->count == 0) return false;
 
-    Entry* entry = find_entry(table->entries, table->capacity, key);
+    entry* entry = find_entry(table->entries, table->capacity, key);
     if (entry->key == NULL) return false;
 
     entry->key = NULL;
@@ -821,14 +821,14 @@ bool table_delete(Table* table, obj_string* key)
     return true;
 }
 
-obj_string* table_find_string(Table* table, const char* chars, int length, uint32_t hash)
+obj_string* table_find_string(table* table, const char* chars, int length, uint32_t hash)
 {
     if (table->count == 0) return NULL;
 
     uint32_t index = hash % table->capacity;
 
     for (;;) {
-        Entry* entry = &table->entries[index];
+        entry* entry = &table->entries[index];
 
         if (entry->key == NULL) {
             if (IS_NIL(entry->value)) return NULL;
@@ -850,11 +850,11 @@ scanner* init_scanner(char* source)
     return s;
 }
 
-static char peek_next(scanner* s)
+static char peek_next(scanner* scanner)
 {
-    if (*s->current == '\0')
+    if (*scanner->current == '\0')
         return '\0';
-    return s->current[1];
+    return scanner->current[1];
 }
 
 static token make_token(scanner* scanner, token_type type)
@@ -868,85 +868,85 @@ static token make_token(scanner* scanner, token_type type)
     return token;
 }
 
-static token_type check_keyword(scanner* s, int start, int length, const char* rest, token_type type)
+static token_type check_keyword(scanner* scanner, int start, int length, const char* rest, token_type type)
 {
-    if (s->current - s->start == start + length && memcmp(s->start + start, rest, length) == 0)
+    if (scanner->current - scanner->start == start + length && memcmp(scanner->start + start, rest, length) == 0)
         return type;
 
     return TOKEN_IDENTIFIER;
 }
 
-static token_type identifier_type(scanner* s)
+static token_type identifier_type(scanner* scanner)
 {
-    switch (s->start[0]) {
-        case 'a': return check_keyword(s, 1, 2, "nd", TOKEN_AND);
-        case 'c': return check_keyword(s, 1, 4, "lass", TOKEN_CLASS);
-        case 'e': return check_keyword(s, 1, 3, "lse", TOKEN_ELSE);
+    switch (scanner->start[0]) {
+        case 'a': return check_keyword(scanner, 1, 2, "nd", TOKEN_AND);
+        case 'c': return check_keyword(scanner, 1, 4, "lass", TOKEN_CLASS);
+        case 'e': return check_keyword(scanner, 1, 3, "lse", TOKEN_ELSE);
         case 'f':
-            if (s->current - s->start > 1){
-                switch (s->start[1]) {
-                    case 'a': return check_keyword(s, 2, 3, "lse", TOKEN_FALSE);
-                    case 'o': return check_keyword(s, 2, 1, "r", TOKEN_FOR);
-                    case 'u': return check_keyword(s, 2, 1, "n", TOKEN_FUN);
+            if (scanner->current - scanner->start > 1){
+                switch (scanner->start[1]) {
+                    case 'a': return check_keyword(scanner, 2, 3, "lse", TOKEN_FALSE);
+                    case 'o': return check_keyword(scanner, 2, 1, "r", TOKEN_FOR);
+                    case 'u': return check_keyword(scanner, 2, 1, "n", TOKEN_FUN);
                 }
             }
             break;
-        case 'i': return check_keyword(s, 1, 1, "f", TOKEN_IF);
-        case 'n': return check_keyword(s, 1, 2, "il", TOKEN_NIL);
-        case 'o': return check_keyword(s, 1, 1, "r", TOKEN_OR);
-        case 'p': return check_keyword(s, 1, 4, "rint", TOKEN_PRINT);
-        case 'r': return check_keyword(s, 1, 5, "eturn", TOKEN_RETURN);
-        case 's': return check_keyword(s, 1, 4, "uper", TOKEN_SUPER);
+        case 'i': return check_keyword(scanner, 1, 1, "f", TOKEN_IF);
+        case 'n': return check_keyword(scanner, 1, 2, "il", TOKEN_NIL);
+        case 'o': return check_keyword(scanner, 1, 1, "r", TOKEN_OR);
+        case 'p': return check_keyword(scanner, 1, 4, "rint", TOKEN_PRINT);
+        case 'r': return check_keyword(scanner, 1, 5, "eturn", TOKEN_RETURN);
+        case 's': return check_keyword(scanner, 1, 4, "uper", TOKEN_SUPER);
         case 't':
-            if (s->current - s->start > 1) {
-                switch (s->start[1]) {
-                    case 'h': return check_keyword(s, 2, 2, "is", TOKEN_THIS);
-                    case 'r': return check_keyword(s, 2, 2, "ue", TOKEN_TRUE);
+            if (scanner->current - scanner->start > 1) {
+                switch (scanner->start[1]) {
+                    case 'h': return check_keyword(scanner, 2, 2, "is", TOKEN_THIS);
+                    case 'r': return check_keyword(scanner, 2, 2, "ue", TOKEN_TRUE);
                 }
             }
             break;
-        case 'v': return check_keyword(s, 1, 2, "ar", TOKEN_VAR);
-        case 'w': return check_keyword(s, 1, 4, "hile", TOKEN_WHILE);
+        case 'v': return check_keyword(scanner, 1, 2, "ar", TOKEN_VAR);
+        case 'w': return check_keyword(scanner, 1, 4, "hile", TOKEN_WHILE);
         }
     return TOKEN_IDENTIFIER;
 }
 
-static token identifier(scanner* s)
+static token identifier(scanner* scanner)
 {
-    while (is_alpha(*s->current ) || is_digit(*s->current )) s->current++;
+    while (is_alpha(*scanner->current ) || is_digit(*scanner->current )) scanner->current++;
 
-    return make_token(s, identifier_type(s));
+    return make_token(scanner, identifier_type(scanner));
 }
 
-static token scan_number(scanner* s)
+static token scan_number(scanner* scanner)
 {
-    while (is_digit(*s->current)) s->current++;;
+    while (is_digit(*scanner->current)) scanner->current++;;
 
-    if (*s->current == '.' && is_digit(peek_next(s))) {
-        s->current++;
-        while(is_digit(*s->current)) s->current++;
+    if (*scanner->current == '.' && is_digit(peek_next(scanner))) {
+        scanner->current++;
+        while(is_digit(*scanner->current)) scanner->current++;
     }
 
-    return make_token(s, TOKEN_NUMBER);
+    return make_token(scanner, TOKEN_NUMBER);
 }
 
-static token error_token(scanner* s, char* message)
+static token error_token(scanner* scanner, char* message)
 {
-    token t;
-    t.type = TOKEN_ERROR;
-    t.start = message;
-    t.length = (int)strlen(message);
-    t.line = s->line;
+    token token;
+    token.type = TOKEN_ERROR;
+    token.start = message;
+    token.length = (int)strlen(message);
+    token.line = scanner->line;
 
-    return t;
+    return token;
 }
 
-static bool scan_match(scanner* s, char expected)
+static bool scan_match(scanner* scanner, char expected)
 {
-    if (*s->current == '\0') return false;
-    if (*s->current != expected) return false;
+    if (*scanner->current == '\0') return false;
+    if (*scanner->current != expected) return false;
 
-    *s->current++;
+    *scanner->current++;
     return true;
 }
 
@@ -1137,10 +1137,10 @@ void disassemble_chunk(chunk* chunk, const char* name)
 }
 
 /* VIRTUAL MACHINE OPERATIONS */
-static inline void push(VM* vm, Value value) { *(vm->stack_top++) = value; }
-static inline Value pop(VM* vm) { return *(--vm->stack_top); }
-static inline Value peek(VM* vm, int distance) { return vm->stack_top[-1 - distance]; }
-static inline bool is_falsey(Value val) { return IS_NIL(val) || (IS_BOOL(val) && !AS_BOOL(val)); }
+static inline void push(VM* vm, value val) { *(vm->stack_top++) = val; }
+static inline value pop(VM* vm) { return *(--vm->stack_top); }
+static inline value peek(VM* vm, int distance) { return vm->stack_top[-1 - distance]; }
+static inline bool is_falsey(value val) { return IS_NIL(val) || (IS_BOOL(val) && !AS_BOOL(val)); }
 
 static interpret_result runtime_error(VM* vm, const char* format, ...)
 {
@@ -1157,7 +1157,7 @@ static interpret_result runtime_error(VM* vm, const char* format, ...)
     return INTERPRET_RUNTIME_ERROR;
 }
 
-static bool values_equal(Value a, Value b)
+static bool values_equal(value a, value b)
 {
     if (a.type != b.type) return false;
 
@@ -1184,19 +1184,19 @@ static interpret_result check(VM* vm)
     return INTERPRET_OK;
 }
 
-static void print_value(Value value)
+static void print_value(value val)
 {
-    switch (value.type) {
+    switch (val.type) {
         case VAL_BOOL:
-            printf(AS_BOOL(value) ? "true" : "false"); break;
+            printf(AS_BOOL(val) ? "true" : "false"); break;
         case VAL_NIL:
             printf("nil"); break;
         case VAL_NUMBER:
-            printf("%g", AS_NUMBER(value)); break;
+            printf("%g", AS_NUMBER(val)); break;
         case VAL_OBJ: 
-            switch (OBJ_TYPE(value)) {
+            switch (OBJ_TYPE(val)) {
                 case OBJ_STRING:
-                    printf("%s", AS_CSTRING(value));
+                    printf("%s", AS_CSTRING(val));
                     break;
             }
             break;
@@ -1227,7 +1227,7 @@ static interpret_result run(VM* vm)
     while (1) {
         switch (instruction = (*vm->ip++)) {
             case OP_CONSTANT:
-                Value constant = vm->chunk->constants.values[(*vm->ip++)];
+                value constant = vm->chunk->constants.values[(*vm->ip++)];
                 push(vm, constant);
                 break;
             case OP_NIL:
@@ -1250,10 +1250,10 @@ static interpret_result run(VM* vm)
                 break;
             case OP_GET_GLOBAL:
                 obj_string* global_name = AS_STRING(vm->chunk->constants.values[(*vm->ip++)]);
-                Value value;
-                if (!table_get(&vm->globals, global_name, &value))
+                value val;
+                if (!table_get(&vm->globals, global_name, &val))
                     return runtime_error(vm, "Undefined variable '%s'", global_name->chars);
-                push(vm, value);
+                push(vm, val);
                 break;
             case OP_DEFINE_GLOBAL:
                 obj_string* global_def = AS_STRING(vm->chunk->constants.values[(*vm->ip++)]);

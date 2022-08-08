@@ -12,23 +12,23 @@
 #define DEBUG
 #define UINT8_COUNT (UINT8_MAX + 1)
 
-#define AS_BOOL(value)      ((value).as.boolean)
-#define AS_NUMBER(value)    ((value).as.number)
-#define AS_OBJ(value)       ((value).as.obj)
-#define AS_STRING(value)    ((obj_string*)AS_OBJ(value))
-#define AS_CSTRING(value)   (((obj_string*)AS_OBJ(value))->chars)
+#define AS_BOOL(val)      ((val).as.boolean)
+#define AS_NUMBER(val)    ((val).as.number)
+#define AS_OBJ(val)       ((val).as.obj)
+#define AS_STRING(val)    ((obj_string*)AS_OBJ(val))
+#define AS_CSTRING(val)   (((obj_string*)AS_OBJ(val))->chars)
 
-#define IS_BOOL(value)      ((value).type == VAL_BOOL)
-#define IS_NIL(value)       ((value).type == VAL_NIL)
-#define IS_NUMBER(value)    ((value).type == VAL_NUMBER)
-#define IS_OBJ(value)       ((value).type == VAL_OBJ)
-#define IS_STRING(value)    IS_OBJ(value) && AS_OBJ(value)->type == OBJ_STRING
+#define IS_BOOL(val)      ((val).type == VAL_BOOL)
+#define IS_NIL(val)       ((val).type == VAL_NIL)
+#define IS_NUMBER(val)    ((val).type == VAL_NUMBER)
+#define IS_OBJ(val)       ((val).type == VAL_OBJ)
+#define IS_STRING(val)    IS_OBJ(val) && AS_OBJ(val)->type == OBJ_STRING
 
-#define BOOL_VAL(value)     ((Value){VAL_BOOL, {.boolean = value}})
-#define NIL_VAL             ((Value){VAL_NIL, {.number = 0}})
-#define NUMBER_VAL(value)   ((Value){VAL_NUMBER, {.number = value}})
-#define OBJ_VAL(object)     ((Value){VAL_OBJ, {.obj = (struct Obj*)object}})
-#define OBJ_TYPE(value)     (AS_OBJ(value)->type)
+#define BOOL_VAL(val)     ((value){VAL_BOOL, {.boolean = val}})
+#define NIL_VAL             ((value){VAL_NIL, {.number = 0}})
+#define NUMBER_VAL(val)   ((value){VAL_NUMBER, {.number = val}})
+#define OBJ_VAL(object)     ((value){VAL_OBJ, {.obj = (struct Obj*)object}})
+#define OBJ_TYPE(val)     (AS_OBJ(val)->type)
 
 typedef enum {
     /* Single-character tokens */
