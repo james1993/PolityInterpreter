@@ -3,11 +3,9 @@
 #include <string.h>
 
 #include "common.h"
-#include "chunk.h"
-#include "debug.h"
-#include "vm.h"
+#include "interpreter.h"
 
-static void run_file(VM* vm, const char* path)
+static void run_file(polity_interpreter* interpreter, const char* path)
 {
 	/* Read file */
 	if (!path || strlen(path) < 3 || strcmp(&path[(int)strlen(path) - 3],".np")) {
@@ -32,7 +30,7 @@ static void run_file(VM* vm, const char* path)
 	fclose(file);
 
 	/* Execute polity source file */
-	interpret_result result = interpret(vm, buffer);
+	interpret_result result = interpret(interpreter, buffer);
 	free(buffer);
 
 	if (result == INTERPRET_COMPILE_ERROR) {
@@ -47,15 +45,16 @@ static void run_file(VM* vm, const char* path)
 
 int main(int argc, const char* argv[])
 {
-	VM* vm = init_vm();
+	polity_interpreter* interpreter = (polity_interpreter*)malloc(sizeof(polity_interpreter));
+	interpreter->vm = init_vm();
 	
 	if (argc == 2) {
-		run_file(vm, argv[1]);
+		run_file(interpreter, argv[1]);
 	} else {
 		fprintf(stderr, "Usage: polity [path_to_file.np]\n");
 		exit(64);
 	}
 
-	free_vm(vm);
+	free_vm(interpreter);
 	return 0;
 }

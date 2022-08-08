@@ -1,15 +1,60 @@
-==320763== Memcheck, a memory error detector
-==320763== Copyright (C) 2002-2017, and GNU GPL'd, by Julian Seward et al.
-==320763== Using Valgrind-3.18.1 and LibVEX; rerun with -h for copyright info
-==320763== Command: ./polity_interpreter test.txt
-==320763== Parent PID: 142104
-==320763== 
-==320763== 
-==320763== HEAP SUMMARY:
-==320763==     in use at exit: 0 bytes in 0 blocks
-==320763==   total heap usage: 17 allocs, 17 frees, 10,151 bytes allocated
-==320763== 
-==320763== All heap blocks were freed -- no leaks are possible
-==320763== 
-==320763== For lists of detected and suppressed errors, rerun with: -s
-==320763== ERROR SUMMARY: 0 errors from 0 contexts (suppressed: 0 from 0)
+==524591== Memcheck, a memory error detector
+==524591== Copyright (C) 2002-2017, and GNU GPL'd, by Julian Seward et al.
+==524591== Using Valgrind-3.18.1 and LibVEX; rerun with -h for copyright info
+==524591== Command: ./polity test.np
+==524591== Parent PID: 142104
+==524591== 
+==524591== Conditional jump or move depends on uninitialised value(s)
+==524591==    at 0x10DEB3: free_vm (in /home/james/Documents/PolityInterpreter/polity)
+==524591==    by 0x10966C: main (in /home/james/Documents/PolityInterpreter/polity)
+==524591== 
+==524591== Conditional jump or move depends on uninitialised value(s)
+==524591==    at 0x484B235: free (in /usr/libexec/valgrind/vgpreload_memcheck-amd64-linux.so)
+==524591==    by 0x10DEC7: free_vm (in /home/james/Documents/PolityInterpreter/polity)
+==524591==    by 0x10966C: main (in /home/james/Documents/PolityInterpreter/polity)
+==524591== 
+==524591== Conditional jump or move depends on uninitialised value(s)
+==524591==    at 0x484B235: free (in /usr/libexec/valgrind/vgpreload_memcheck-amd64-linux.so)
+==524591==    by 0x10DEDA: free_vm (in /home/james/Documents/PolityInterpreter/polity)
+==524591==    by 0x10966C: main (in /home/james/Documents/PolityInterpreter/polity)
+==524591== 
+==524591== 
+==524591== HEAP SUMMARY:
+==524591==     in use at exit: 4,392 bytes in 3 blocks
+==524591==   total heap usage: 17 allocs, 14 frees, 18,617 bytes allocated
+==524591== 
+==524591== 4,392 (4,160 direct, 232 indirect) bytes in 1 blocks are definitely lost in loss record 3 of 3
+==524591==    at 0x4848899: malloc (in /usr/libexec/valgrind/vgpreload_memcheck-amd64-linux.so)
+==524591==    by 0x10DDC8: init_vm (in /home/james/Documents/PolityInterpreter/polity)
+==524591==    by 0x109605: main (in /home/james/Documents/PolityInterpreter/polity)
+==524591== 
+==524591== LEAK SUMMARY:
+==524591==    definitely lost: 4,160 bytes in 1 blocks
+==524591==    indirectly lost: 232 bytes in 2 blocks
+==524591==      possibly lost: 0 bytes in 0 blocks
+==524591==    still reachable: 0 bytes in 0 blocks
+==524591==         suppressed: 0 bytes in 0 blocks
+==524591== 
+==524591== Use --track-origins=yes to see where uninitialised values come from
+==524591== ERROR SUMMARY: 4 errors from 4 contexts (suppressed: 0 from 0)
+==524591== 
+==524591== 1 errors in context 1 of 4:
+==524591== Conditional jump or move depends on uninitialised value(s)
+==524591==    at 0x484B235: free (in /usr/libexec/valgrind/vgpreload_memcheck-amd64-linux.so)
+==524591==    by 0x10DEDA: free_vm (in /home/james/Documents/PolityInterpreter/polity)
+==524591==    by 0x10966C: main (in /home/james/Documents/PolityInterpreter/polity)
+==524591== 
+==524591== 
+==524591== 1 errors in context 2 of 4:
+==524591== Conditional jump or move depends on uninitialised value(s)
+==524591==    at 0x484B235: free (in /usr/libexec/valgrind/vgpreload_memcheck-amd64-linux.so)
+==524591==    by 0x10DEC7: free_vm (in /home/james/Documents/PolityInterpreter/polity)
+==524591==    by 0x10966C: main (in /home/james/Documents/PolityInterpreter/polity)
+==524591== 
+==524591== 
+==524591== 1 errors in context 3 of 4:
+==524591== Conditional jump or move depends on uninitialised value(s)
+==524591==    at 0x10DEB3: free_vm (in /home/james/Documents/PolityInterpreter/polity)
+==524591==    by 0x10966C: main (in /home/james/Documents/PolityInterpreter/polity)
+==524591== 
+==524591== ERROR SUMMARY: 4 errors from 4 contexts (suppressed: 0 from 0)
