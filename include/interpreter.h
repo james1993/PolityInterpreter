@@ -100,9 +100,10 @@ typedef struct {
     scanner* scanner;
     compiler* compiler;
     parser* parser;
+    bool can_assign;
 } polity_interpreter;
 
-typedef void (*parse_fn)(polity_interpreter* interpreter, bool can_assign);
+typedef void (*parse_fn)(polity_interpreter* interpreter);
 
 typedef struct {
     parse_fn prefix;

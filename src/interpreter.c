@@ -2,14 +2,14 @@
 
 /* COMPILER OPERATIONS */
 static parse_rule *get_rule(token_type type);
-static void expression(polity_interpreter* interpreter, bool can_assign);
-static void grouping(polity_interpreter* interpreter, bool can_assign);
-static void binary(polity_interpreter* interpreter, bool can_assign);
-static void statement(polity_interpreter* interpreter, bool can_assign);
-static void declaration(polity_interpreter* interpreter, bool can_assign);
+static void expression(polity_interpreter* interpreter);
+static void grouping(polity_interpreter* interpreter);
+static void binary(polity_interpreter* interpreter);
+static void statement(polity_interpreter* interpreter);
+static void declaration(polity_interpreter* interpreter);
 static uint8_t identifier_constant(polity_interpreter* interpreter, token* name);
 static int resolve_local(polity_interpreter* interpreter, token* name);
-static void and_(polity_interpreter* interpreter, bool can_assign);
+static void and_(polity_interpreter* interpreter);
 
 static void error_at(parser *parser, token *token, const char *message)
 {
@@ -33,17 +33,13 @@ static void error(parser *parser, const char *message)
     error_at(parser, &parser->previous, message);
 }
 
-static void error_at_current(parser *parser, const char *message)
-{
-    error_at(parser, &parser->current, message);
-}
-
 obj_string* allocate_string(VM* vm, char* chars, int length, uint32_t hash)
 {
     struct Obj* obj = (struct Obj*)malloc(sizeof(obj_string));
     obj->type = OBJ_STRING;
     obj->next = vm->objects;
     vm->objects = obj;
+
     obj_string* str = (obj_string*)obj;
     str->length = length;
     str->chars = chars;
@@ -83,30 +79,29 @@ static void advance(polity_interpreter* interpreter)
     parser* parser = interpreter->parser;
     parser->previous = parser->current;
 
-    for (;;)
-    {
+    while (1) {
         parser->current = scan_token(interpreter->scanner);
         if (parser->current.type != TOKEN_ERROR)
             break;
 
-        error_at_current(parser, parser->current.start);
+        error_at(parser, &parser->current, parser->current.start);
     }
 }
 
 static void consume(polity_interpreter* interpreter, token_type type, const char *message)
 {
-    if (interpreter->parser->current.type == type)
-    {
+    if (interpreter->parser->current.type == type) {
         advance(interpreter);
         return;
     }
-
-    error_at_current(interpreter->parser, message);
+    error_at(interpreter->parser, &interpreter->parser->previous, interpreter->parser->current.start);
 }
 
 static bool match(polity_interpreter* interpreter, token_type type)
 {
-    if (!(interpreter->parser->current.type == type)) return false;
+    if (!(interpreter->parser->current.type == type))
+        return false;
+
     advance(interpreter);
     return true;
 }
@@ -135,7 +130,8 @@ static void emit_loop(polity_interpreter* interpreter, int loop_start)
     emit_byte(interpreter, OP_LOOP);
 
     int offset = interpreter->chunk->count - loop_start + 2;
-    if (offset > UINT16_MAX) error(interpreter->parser, "Loop body too large");
+    if (offset > UINT16_MAX)
+        error(interpreter->parser, "Loop body too large");
 
     emit_byte(interpreter, (offset >> 8) & 0xFF);
     emit_byte(interpreter, offset & 0xFF);
@@ -146,24 +142,17 @@ static void patch_jump(polity_interpreter* interpreter, int offset)
     chunk* chunk = interpreter->chunk;
     int jump = chunk->count - offset - 2;
 
-    if (jump > UINT16_MAX) {
+    if (jump > UINT16_MAX)
         error(interpreter->parser, "Too much code to jump over");
-    }
 
     chunk->code[offset] = (jump >> 8) & 0xFF;
     chunk->code[offset + 1] = jump & 0xFF;
 }
 
-static void emit_return(polity_interpreter* interpreter)
-{
-    emit_byte(interpreter, OP_RETURN);
-}
-
 static uint8_t make_constant(polity_interpreter* interpreter, Value value)
 {
     int constant = add_constant(interpreter->chunk, value);
-    if (constant > UINT8_MAX)
-    {
+    if (constant > UINT8_MAX) {
         error(interpreter->parser, "Too many constants in one chunk");
         return 0;
     }
@@ -176,10 +165,10 @@ static void emit_constant(polity_interpreter* interpreter, Value value)
     emit_bytes(interpreter, OP_CONSTANT, make_constant(interpreter, value));
 }
 
-static void number(polity_interpreter* interpreter, bool can_assign)
+static void number(polity_interpreter* interpreter)
 {
-    double value = strtod(interpreter->parser->previous.start, NULL);
-    emit_constant(interpreter, NUMBER_VAL(value));
+    emit_constant(interpreter,
+            NUMBER_VAL(strtod(interpreter->parser->previous.start, NULL)));
 }
 
 static void parse_precedence(polity_interpreter* interpreter, precedence prec)
@@ -187,28 +176,25 @@ static void parse_precedence(polity_interpreter* interpreter, precedence prec)
     parser* parser = interpreter->parser;
     advance(interpreter);
     parse_fn prefix_rule = get_rule(parser->previous.type)->prefix;
-    if (!prefix_rule)
-    {
+    if (!prefix_rule) {
         error(parser, "Expect expression");
         return;
     }
 
-    bool can_assign = prec <= PREC_ASSIGNMENT;
-    prefix_rule(interpreter, can_assign);
+    interpreter->can_assign = prec <= PREC_ASSIGNMENT;
+    prefix_rule(interpreter);
 
-    while (prec <= get_rule(parser->current.type)->prec)
-    {
+    while (prec <= get_rule(parser->current.type)->prec) {
         advance(interpreter);
         parse_fn infix_rule = get_rule(parser->previous.type)->infix;
-        infix_rule(interpreter, can_assign);
+        infix_rule(interpreter);
     }
 
-    if (can_assign && match(interpreter, TOKEN_EQUAL)) {
+    if (interpreter->can_assign && match(interpreter, TOKEN_EQUAL))
         error(parser, "Invalid assignment target");
-    }
 }
 
-static void or_(polity_interpreter* interpreter, bool can_assign)
+static void or_(polity_interpreter* interpreter)
 {
     int else_jump = emit_jump(interpreter, OP_JUMP_IF_FALSE);
     int end_jump = emit_jump(interpreter, OP_JUMP);
@@ -220,13 +206,13 @@ static void or_(polity_interpreter* interpreter, bool can_assign)
     patch_jump(interpreter, end_jump);
 }
 
-static void string(polity_interpreter* interpreter, bool can_assign)
+static void string(polity_interpreter* interpreter)
 {
     emit_constant(interpreter,
         OBJ_VAL(copy_string(interpreter->vm, interpreter->parser->previous.start + 1, interpreter->parser->previous.length - 2)));
 }
 
-static void named_variable(polity_interpreter* interpreter, token name, bool can_assign)
+static void named_variable(polity_interpreter* interpreter, token name)
 {
     uint8_t get_op, set_op;
     int arg = resolve_local(interpreter, &name);
@@ -239,17 +225,16 @@ static void named_variable(polity_interpreter* interpreter, token name, bool can
         set_op = OP_SET_GLOBAL;
     }
 
-    if (can_assign && match(interpreter, TOKEN_EQUAL)) {
-        expression(interpreter, can_assign);
+    if (interpreter->can_assign && match(interpreter, TOKEN_EQUAL)) {
+        expression(interpreter);
         emit_bytes(interpreter, set_op, (uint8_t)arg);
-    } else {
+    } else
         emit_bytes(interpreter, get_op, (uint8_t)arg);
-    }
 }
 
-static void variable(polity_interpreter* interpreter, bool can_assign)
+static void variable(polity_interpreter* interpreter)
 {
-    named_variable(interpreter, interpreter->parser->previous, can_assign);
+    named_variable(interpreter, interpreter->parser->previous);
 }
 
 static uint8_t identifier_constant(polity_interpreter* interpreter, token* name)
@@ -259,7 +244,9 @@ static uint8_t identifier_constant(polity_interpreter* interpreter, token* name)
 
 static bool identifiers_equal(token* a, token* b)
 {
-    if (a->length != b->length) return false;
+    if (a->length != b->length)
+        return false;
+
     return memcmp(a->start, b->start, a->length) == 0;
 }
 
@@ -268,9 +255,9 @@ static int resolve_local(polity_interpreter* interpreter, token* name)
     for (int i = interpreter->compiler->local_count - 1; i >= 0; i--) {
         Local* local = &interpreter->compiler->locals[i];
         if (identifiers_equal(name, &local->name)) {
-            if (local->depth == -1) {
+            if (local->depth == -1)
                 error(interpreter->parser, "Can't read local variable in its own initializer");
-            }
+
             return i;
         }
     }
@@ -295,18 +282,17 @@ static void declare_variable(polity_interpreter* interpreter)
     parser* parser = interpreter->parser;
     compiler* compiler = interpreter->compiler;
 
-    if (compiler->scope_depth == 0) return;
+    if (compiler->scope_depth == 0)
+        return;
 
     token* name = &parser->previous;
     for (int i = compiler->local_count - 1; i>= 0; i--) {
         Local* local = &compiler->locals[i];
-        if (local->depth != -1 && local->depth < compiler->scope_depth) {
+        if (local->depth != -1 && local->depth < compiler->scope_depth)
             break;
-        }
 
-        if (identifiers_equal(name, &local->name)) {
+        if (identifiers_equal(name, &local->name))
             error(parser, "Already variable with this name in this scope");
-        }
     }
 
     add_local(interpreter, *name);
@@ -317,12 +303,13 @@ static uint8_t parse_variable(polity_interpreter* interpreter, const char* messa
     consume(interpreter, TOKEN_IDENTIFIER, message);
 
     declare_variable(interpreter);
-    if (interpreter->compiler->scope_depth > 0) return 0;
+    if (interpreter->compiler->scope_depth > 0)
+        return 0;
 
     return identifier_constant(interpreter, &interpreter->parser->previous);
 }
 
-static void unary(polity_interpreter* interpreter, bool can_assign)
+static void unary(polity_interpreter* interpreter)
 {
     token_type operator_type = interpreter->parser->previous.type;
 
@@ -343,7 +330,7 @@ static void unary(polity_interpreter* interpreter, bool can_assign)
 
 static void end_compiler(polity_interpreter* interpreter)
 {
-    emit_return(interpreter);
+    emit_byte(interpreter, OP_RETURN); /* Emit return */
 #ifdef DEBUG
     if (!interpreter->parser->had_error)
         disassemble_chunk(interpreter->chunk, "code");
@@ -366,7 +353,7 @@ static void end_scope(polity_interpreter* interpreter)
     }
 }
 
-static void literal(polity_interpreter* interpreter, bool can_assign)
+static void literal(polity_interpreter* interpreter)
 {
     switch (interpreter->parser->previous.type)
     {
@@ -432,7 +419,7 @@ static parse_rule *get_rule(token_type type)
     return &rules[type];
 }
 
-static void binary(polity_interpreter* interpreter, bool can_assign)
+static void binary(polity_interpreter* interpreter)
 {
     token_type operator_type = interpreter->parser->previous.type;
     parse_rule *rule = get_rule(operator_type);
@@ -475,21 +462,21 @@ static void binary(polity_interpreter* interpreter, bool can_assign)
     }
 }
 
-static void grouping(polity_interpreter* interpreter, bool can_assign)
+static void grouping(polity_interpreter* interpreter)
 {
-    expression(interpreter, can_assign);
+    expression(interpreter);
     consume(interpreter, TOKEN_RIGHT_PAREN, "Expect ')' after expression");
 }
 
-static void expression(polity_interpreter* interpreter, bool can_assign)
+static void expression(polity_interpreter* interpreter)
 {
     parse_precedence(interpreter, PREC_ASSIGNMENT);
 }
 
-static void block(polity_interpreter* interpreter, bool can_assign)
+static void block(polity_interpreter* interpreter)
 {
     while (!(interpreter->parser->current.type == TOKEN_RIGHT_BRACE) && !(interpreter->parser->current.type == TOKEN_EOF)) {
-        declaration(interpreter, can_assign);
+        declaration(interpreter);
     }
 
     consume(interpreter, TOKEN_RIGHT_BRACE, "Expect '}' after block");
@@ -509,7 +496,7 @@ static void define_variable(polity_interpreter* interpreter, uint8_t global)
     emit_bytes(interpreter, OP_DEFINE_GLOBAL, global);
 }
 
-static void and_(polity_interpreter* interpreter, bool can_assign)
+static void and_(polity_interpreter* interpreter)
 {
     int end_jump = emit_jump(interpreter, OP_JUMP_IF_FALSE);
 
@@ -519,44 +506,43 @@ static void and_(polity_interpreter* interpreter, bool can_assign)
     patch_jump(interpreter, end_jump);
 }
 
-static void var_declaration(polity_interpreter* interpreter, bool can_assign)
+static void var_declaration(polity_interpreter* interpreter)
 {
     uint8_t global = parse_variable(interpreter, "Expect variable name");
 
-    if (match(interpreter, TOKEN_EQUAL)) {
-        expression(interpreter, can_assign);
-    } else {
+    if (match(interpreter, TOKEN_EQUAL))
+        expression(interpreter);
+    else
         emit_byte(interpreter, OP_NIL);
-    }
+
     consume(interpreter, TOKEN_SEMICOLON, "Expect ';' after variable declaration");
 
     define_variable(interpreter, global);
 }
 
-static void expression_statement(polity_interpreter* interpreter, bool can_assign)
+static void expression_statement(polity_interpreter* interpreter)
 {
-    expression(interpreter, can_assign);
+    expression(interpreter);
     consume(interpreter, TOKEN_SEMICOLON, "Expect ';' after expression");
     emit_byte(interpreter, OP_POP);
 }
 
-static void for_statement(polity_interpreter* interpreter, bool can_assign)
+static void for_statement(polity_interpreter* interpreter)
 {
     begin_scope(interpreter->compiler);
     consume(interpreter, TOKEN_LEFT_PAREN, "Expect '(' after 'for'");
     if (match(interpreter, TOKEN_SEMICOLON)) {
         /* No initializer */
-    } else if (match(interpreter, TOKEN_VAR)) {
-        var_declaration(interpreter, can_assign);
-    } else {
-        expression_statement(interpreter, can_assign);
-    }
+    } else if (match(interpreter, TOKEN_VAR))
+        var_declaration(interpreter);
+    else
+        expression_statement(interpreter);
 
     int loop_start = interpreter->chunk->count;
 
     int exit_jump = -1;
     if (!match(interpreter, TOKEN_SEMICOLON)) {
-        expression(interpreter, can_assign);
+        expression(interpreter);
         consume(interpreter, TOKEN_SEMICOLON, "Expect ';' after loop condition");
 
         /* Jump out of the loop if the condition is false */
@@ -568,7 +554,7 @@ static void for_statement(polity_interpreter* interpreter, bool can_assign)
         int body_jump = emit_jump(interpreter, OP_JUMP);
 
         int increment_start = interpreter->chunk->count;
-        expression(interpreter, can_assign);
+        expression(interpreter);
         emit_byte(interpreter, OP_POP);
         consume(interpreter, TOKEN_RIGHT_PAREN, "Expect ')' after for clauses");
 
@@ -577,7 +563,7 @@ static void for_statement(polity_interpreter* interpreter, bool can_assign)
         patch_jump(interpreter, body_jump);
     }
 
-    statement(interpreter, can_assign);
+    statement(interpreter);
 
     emit_loop(interpreter, loop_start);
 
@@ -589,18 +575,18 @@ static void for_statement(polity_interpreter* interpreter, bool can_assign)
     end_scope(interpreter);
 }
 
-static void while_statement(polity_interpreter* interpreter, bool can_assign)
+static void while_statement(polity_interpreter* interpreter)
 {
     int loop_start = interpreter->chunk->count;
 
     consume(interpreter, TOKEN_LEFT_PAREN, "Expect '(' after 'while'");
-    expression(interpreter, can_assign);
+    expression(interpreter);
     consume(interpreter, TOKEN_RIGHT_PAREN, "Expect ')' after 'while'");
 
     int exit_jump = emit_jump(interpreter, OP_JUMP_IF_FALSE);
 
     emit_byte(interpreter, OP_POP);
-    statement(interpreter, can_assign);
+    statement(interpreter);
 
     emit_loop(interpreter, loop_start);
 
@@ -608,9 +594,9 @@ static void while_statement(polity_interpreter* interpreter, bool can_assign)
     emit_byte(interpreter, OP_POP);
 }
 
-static void print_statement(polity_interpreter* interpreter, bool can_assign)
+static void print_statement(polity_interpreter* interpreter)
 {
-    expression(interpreter, can_assign);
+    expression(interpreter);
     consume(interpreter, TOKEN_SEMICOLON, "Expect ';' after value");
     emit_byte(interpreter, OP_PRINT);
 }
@@ -621,7 +607,8 @@ static void synchronize(polity_interpreter* interpreter)
     parser->panic_mode = false;
 
     while (parser->current.type != TOKEN_EOF) {
-        if (parser->previous.type == TOKEN_SEMICOLON) return;
+        if (parser->previous.type == TOKEN_SEMICOLON)
+            return;
 
         switch (parser->current.type) {
             case TOKEN_CLASS:
@@ -641,53 +628,55 @@ static void synchronize(polity_interpreter* interpreter)
     }
 }
 
-static void declaration(polity_interpreter* interpreter, bool can_assign)
+static void declaration(polity_interpreter* interpreter)
 {
-    if (match(interpreter, TOKEN_VAR)) {
-        var_declaration(interpreter, can_assign);
-    } else {
-        statement(interpreter, can_assign);
-    }
+    if (match(interpreter, TOKEN_VAR))
+        var_declaration(interpreter);
+    else
+        statement(interpreter);
 
-    if (interpreter->parser->panic_mode) synchronize(interpreter);
+    if (interpreter->parser->panic_mode)
+        synchronize(interpreter);
 }
 
-static void if_statement(polity_interpreter* interpreter, bool can_assign)
+static void if_statement(polity_interpreter* interpreter)
 {
     consume(interpreter, TOKEN_LEFT_PAREN, "Expect '(' after 'if'");
-    expression(interpreter, can_assign);
+    expression(interpreter);
     consume(interpreter, TOKEN_RIGHT_PAREN, "Expect ')' after condition");
 
     int then_jump = emit_jump(interpreter, OP_JUMP_IF_FALSE);
     emit_byte(interpreter, OP_POP);
-    statement(interpreter, can_assign);
+    statement(interpreter);
 
     int else_jump = emit_jump(interpreter, OP_JUMP);
 
     patch_jump(interpreter, then_jump);
     emit_byte(interpreter, OP_POP);
 
-    if (match(interpreter, TOKEN_ELSE)) statement(interpreter, can_assign);
+    if (match(interpreter, TOKEN_ELSE))
+        statement(interpreter);
+
     patch_jump(interpreter, else_jump);
 }
 
-static void statement(polity_interpreter* interpreter, bool can_assign)
+static void statement(polity_interpreter* interpreter)
 {
-    if (match(interpreter, TOKEN_PRINT)) {
-        print_statement(interpreter, can_assign);
-    } else if (match(interpreter, TOKEN_FOR)) {
-        for_statement(interpreter, can_assign);
-    } else if (match(interpreter, TOKEN_IF)) {
-        if_statement(interpreter, can_assign);
-    } else if (match(interpreter, TOKEN_WHILE)) {
-        while_statement(interpreter, can_assign);
-    } else if (match(interpreter, TOKEN_LEFT_BRACE)) {
+    if (match(interpreter, TOKEN_PRINT))
+        print_statement(interpreter);
+    else if (match(interpreter, TOKEN_FOR))
+        for_statement(interpreter);
+    else if (match(interpreter, TOKEN_IF))
+        if_statement(interpreter);
+    else if (match(interpreter, TOKEN_WHILE))
+        while_statement(interpreter);
+    else if (match(interpreter, TOKEN_LEFT_BRACE)) {
         begin_scope(interpreter->compiler);
-        block(interpreter, can_assign);
+        block(interpreter);
         end_scope(interpreter);
-    } else {
-        expression_statement(interpreter, can_assign);
-    }
+    } else
+        expression_statement(interpreter);
+
 }
 
 bool compile(char *source, polity_interpreter* interpreter)
@@ -695,21 +684,19 @@ bool compile(char *source, polity_interpreter* interpreter)
     interpreter->scanner = init_scanner(source);
     interpreter->compiler = (compiler*)calloc(1, sizeof(compiler));
     interpreter->parser = (parser *)calloc(1, sizeof(parser));
-    bool error;
 
     advance(interpreter);
     
-    while (!match(interpreter, TOKEN_EOF)) {
-        declaration(interpreter, false);
-    }
+    while (!match(interpreter, TOKEN_EOF))
+        declaration(interpreter);
 
     end_compiler(interpreter);
 
-    error = !interpreter->parser->had_error;
+    interpreter->can_assign = !interpreter->parser->had_error;
     free(interpreter->scanner);
     free(interpreter->parser);
     free(interpreter->compiler);
-    return error;
+    return interpreter->can_assign;
 }
 
 /* CHUNK OPERATIONS */
