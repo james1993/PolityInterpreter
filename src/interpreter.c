@@ -1216,6 +1216,9 @@ static void print_value(value val)
             printf("%g", AS_NUMBER(val)); break;
         case VAL_OBJ: 
             switch (OBJ_TYPE(val)) {
+                case OBJ_FUNCTION:
+                    printf("<fn %s>", AS_FUNCTION(val)->name->chars);
+                    break;
                 case OBJ_STRING:
                     printf("%s", AS_CSTRING(val));
                     break;
@@ -1388,10 +1391,16 @@ void free_vm(VM* vm)
 	while (object != NULL) {
 		struct obj* next = object->next;
 		switch (object->type) {
-			case OBJ_STRING:
+            case OBJ_FUNCTION: {
+                obj_function* function = (obj_function*)object;
+                free_chunk(&function->chunk);
+                free((obj_function*)object);
+            }
+			case OBJ_STRING: {
 				obj_string* str = (obj_string*)object;
 				free(str->chars);
 				free(str);
+            }
 		}
 		object = next;
 	}
@@ -1418,4 +1427,13 @@ interpret_result interpret(polity_interpreter* interpreter, char* source)
 
     free_chunk(interpreter->chunk);
     return result;
+}
+
+obj_function* new_function()
+{
+    struct obj* object = (struct obj*)calloc(1, sizeof(obj_function));
+    object->type = OBJ_FUNCTION;
+    obj_function* function = (obj_function*)object;
+
+    return function;
 }

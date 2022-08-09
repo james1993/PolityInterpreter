@@ -17,18 +17,25 @@
 #define AS_OBJ(val)       ((val).as.obj)
 #define AS_STRING(val)    ((obj_string*)AS_OBJ(val))
 #define AS_CSTRING(val)   (((obj_string*)AS_OBJ(val))->chars)
+#define AS_FUNCTION(val)  ((obj_function*)AS_OBJ(val))
 
 #define IS_BOOL(val)      ((val).type == VAL_BOOL)
 #define IS_NIL(val)       ((val).type == VAL_NIL)
 #define IS_NUMBER(val)    ((val).type == VAL_NUMBER)
 #define IS_OBJ(val)       ((val).type == VAL_OBJ)
 #define IS_STRING(val)    IS_OBJ(val) && AS_OBJ(val)->type == OBJ_STRING
+#define IS_FUNCTION(val)  IS_OBJ(val) && AS_OBJ(val)->type == OBJ_FUNCTION
 
 #define BOOL_VAL(val)     ((value){VAL_BOOL, {.boolean = val}})
 #define NIL_VAL             ((value){VAL_NIL, {.number = 0}})
 #define NUMBER_VAL(val)   ((value){VAL_NUMBER, {.number = val}})
 #define OBJ_VAL(object)     ((value){VAL_OBJ, {.obj = (struct obj*)object}})
 #define OBJ_TYPE(val)     (AS_OBJ(val)->type)
+
+typedef enum {
+    TYPE_FUNCTION,
+    TYPE_SCRIPT
+} function_type;
 
 typedef enum {
     /* Single-character tokens */
@@ -100,6 +107,7 @@ typedef enum {
 } interpret_result;
 
 typedef enum {
+    OBJ_FUNCTION,
     OBJ_STRING,
 } obj_type;
 

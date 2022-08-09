@@ -32,23 +32,10 @@ typedef struct {
     int depth;
 } local;
 
-typedef struct {
-    local locals[UINT8_COUNT];
-    int local_count;
-    int scope_depth;
-} compiler;
-
 struct obj {
     obj_type type;
     struct obj* next;
 };
-
-typedef struct {
-    struct obj obj;
-    int arity;
-    chunk chunk;
-    obj_string* name;
-} obj_function;
 
 typedef struct {
     struct obj obj;
@@ -79,6 +66,21 @@ typedef struct {
     int* lines;
     value_array constants;
 } chunk;
+
+typedef struct {
+    struct obj obj;
+    int arity;
+    chunk chunk;
+    obj_string* name;
+} obj_function;
+
+typedef struct {
+    obj_function* function;
+    function_type type;
+    local locals[UINT8_COUNT];
+    int local_count;
+    int scope_depth;
+} compiler;
 
 typedef struct {
     obj_string* key;
