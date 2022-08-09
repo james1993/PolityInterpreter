@@ -38,13 +38,13 @@ typedef struct {
     int scope_depth;
 } compiler;
 
-struct Obj {
+struct obj {
     obj_type type;
-    struct Obj* next;
+    struct obj* next;
 };
 
 typedef struct {
-    struct Obj obj;
+    struct obj obj;
     int length;
     char* chars;
     uint32_t hash;
@@ -55,7 +55,7 @@ typedef struct {
     union {
         bool boolean;
         double number;
-        struct Obj* obj;
+        struct obj* obj;
     } as;
 } value;
 
@@ -91,7 +91,7 @@ typedef struct {
     value* stack_top;
     table globals;
     table strings;
-    struct Obj* objects;
+    struct obj* objects;
 } VM;
 
 typedef struct {

@@ -1,60 +1,24 @@
-==526736== Memcheck, a memory error detector
-==526736== Copyright (C) 2002-2017, and GNU GPL'd, by Julian Seward et al.
-==526736== Using Valgrind-3.18.1 and LibVEX; rerun with -h for copyright info
-==526736== Command: ./polity test.np
-==526736== Parent PID: 142104
-==526736== 
-==526736== Conditional jump or move depends on uninitialised value(s)
-==526736==    at 0x10DD7E: free_vm (in /home/james/Documents/PolityInterpreter/polity)
-==526736==    by 0x10966C: main (in /home/james/Documents/PolityInterpreter/polity)
-==526736== 
-==526736== Conditional jump or move depends on uninitialised value(s)
-==526736==    at 0x484B235: free (in /usr/libexec/valgrind/vgpreload_memcheck-amd64-linux.so)
-==526736==    by 0x10DD92: free_vm (in /home/james/Documents/PolityInterpreter/polity)
-==526736==    by 0x10966C: main (in /home/james/Documents/PolityInterpreter/polity)
-==526736== 
-==526736== Conditional jump or move depends on uninitialised value(s)
-==526736==    at 0x484B235: free (in /usr/libexec/valgrind/vgpreload_memcheck-amd64-linux.so)
-==526736==    by 0x10DDA5: free_vm (in /home/james/Documents/PolityInterpreter/polity)
-==526736==    by 0x10966C: main (in /home/james/Documents/PolityInterpreter/polity)
-==526736== 
-==526736== 
-==526736== HEAP SUMMARY:
-==526736==     in use at exit: 4,392 bytes in 3 blocks
-==526736==   total heap usage: 17 allocs, 14 frees, 18,625 bytes allocated
-==526736== 
-==526736== 4,392 (4,160 direct, 232 indirect) bytes in 1 blocks are definitely lost in loss record 3 of 3
-==526736==    at 0x4848899: malloc (in /usr/libexec/valgrind/vgpreload_memcheck-amd64-linux.so)
-==526736==    by 0x10DC93: init_vm (in /home/james/Documents/PolityInterpreter/polity)
-==526736==    by 0x109605: main (in /home/james/Documents/PolityInterpreter/polity)
-==526736== 
-==526736== LEAK SUMMARY:
-==526736==    definitely lost: 4,160 bytes in 1 blocks
-==526736==    indirectly lost: 232 bytes in 2 blocks
-==526736==      possibly lost: 0 bytes in 0 blocks
-==526736==    still reachable: 0 bytes in 0 blocks
-==526736==         suppressed: 0 bytes in 0 blocks
-==526736== 
-==526736== Use --track-origins=yes to see where uninitialised values come from
-==526736== ERROR SUMMARY: 4 errors from 4 contexts (suppressed: 0 from 0)
-==526736== 
-==526736== 1 errors in context 1 of 4:
-==526736== Conditional jump or move depends on uninitialised value(s)
-==526736==    at 0x484B235: free (in /usr/libexec/valgrind/vgpreload_memcheck-amd64-linux.so)
-==526736==    by 0x10DDA5: free_vm (in /home/james/Documents/PolityInterpreter/polity)
-==526736==    by 0x10966C: main (in /home/james/Documents/PolityInterpreter/polity)
-==526736== 
-==526736== 
-==526736== 1 errors in context 2 of 4:
-==526736== Conditional jump or move depends on uninitialised value(s)
-==526736==    at 0x484B235: free (in /usr/libexec/valgrind/vgpreload_memcheck-amd64-linux.so)
-==526736==    by 0x10DD92: free_vm (in /home/james/Documents/PolityInterpreter/polity)
-==526736==    by 0x10966C: main (in /home/james/Documents/PolityInterpreter/polity)
-==526736== 
-==526736== 
-==526736== 1 errors in context 3 of 4:
-==526736== Conditional jump or move depends on uninitialised value(s)
-==526736==    at 0x10DD7E: free_vm (in /home/james/Documents/PolityInterpreter/polity)
-==526736==    by 0x10966C: main (in /home/james/Documents/PolityInterpreter/polity)
-==526736== 
-==526736== ERROR SUMMARY: 4 errors from 4 contexts (suppressed: 0 from 0)
+==555959== Memcheck, a memory error detector
+==555959== Copyright (C) 2002-2017, and GNU GPL'd, by Julian Seward et al.
+==555959== Using Valgrind-3.18.1 and LibVEX; rerun with -h for copyright info
+==555959== Command: ./polity test.np
+==555959== Parent PID: 142104
+==555959== 
+==555959== 
+==555959== HEAP SUMMARY:
+==555959==     in use at exit: 4,392 bytes in 3 blocks
+==555959==   total heap usage: 17 allocs, 14 frees, 18,625 bytes allocated
+==555959== 
+==555959== 4,392 (4,160 direct, 232 indirect) bytes in 1 blocks are definitely lost in loss record 3 of 3
+==555959==    at 0x484DA83: calloc (in /usr/libexec/valgrind/vgpreload_memcheck-amd64-linux.so)
+==555959==    by 0x10DC8D: init_vm (in /home/james/Documents/PolityInterpreter/polity)
+==555959==    by 0x109605: main (in /home/james/Documents/PolityInterpreter/polity)
+==555959== 
+==555959== LEAK SUMMARY:
+==555959==    definitely lost: 4,160 bytes in 1 blocks
+==555959==    indirectly lost: 232 bytes in 2 blocks
+==555959==      possibly lost: 0 bytes in 0 blocks
+==555959==    still reachable: 0 bytes in 0 blocks
+==555959==         suppressed: 0 bytes in 0 blocks
+==555959== 
+==555959== ERROR SUMMARY: 1 errors from 1 contexts (suppressed: 0 from 0)

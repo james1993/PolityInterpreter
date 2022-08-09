@@ -2,7 +2,6 @@
 
 /* COMPILER OPERATIONS */
 static parse_rule *get_rule(token_type type);
-static void expression(polity_interpreter* interpreter);
 static void grouping(polity_interpreter* interpreter);
 static void binary(polity_interpreter* interpreter);
 static void statement(polity_interpreter* interpreter);
@@ -35,7 +34,7 @@ static void error(parser *parser, const char *message)
 
 obj_string* allocate_string(VM* vm, char* chars, int length, uint32_t hash)
 {
-    struct Obj* obj = (struct Obj*)malloc(sizeof(obj_string));
+    struct obj* obj = (struct obj*)malloc(sizeof(obj_string));
     obj->type = OBJ_STRING;
     obj->next = vm->objects;
     vm->objects = obj;
@@ -192,6 +191,11 @@ static void parse_precedence(polity_interpreter* interpreter, precedence prec)
 
     if (interpreter->can_assign && match(interpreter, TOKEN_EQUAL))
         error(parser, "Invalid assignment target");
+}
+
+static void expression(polity_interpreter* interpreter)
+{
+    parse_precedence(interpreter, PREC_ASSIGNMENT);
 }
 
 static void or_(polity_interpreter* interpreter)
@@ -468,11 +472,6 @@ static void grouping(polity_interpreter* interpreter)
     consume(interpreter, TOKEN_RIGHT_PAREN, "Expect ')' after expression");
 }
 
-static void expression(polity_interpreter* interpreter)
-{
-    parse_precedence(interpreter, PREC_ASSIGNMENT);
-}
-
 static void block(polity_interpreter* interpreter)
 {
     while (!(interpreter->parser->current.type == TOKEN_RIGHT_BRACE) && !(interpreter->parser->current.type == TOKEN_EOF)) {
@@ -737,18 +736,16 @@ static entry* find_entry(entry* entries, int capacity, obj_string* key)
 {
     uint32_t index = key->hash % capacity;
     entry* tombstone = NULL;
-    for (;;) {
+    while (1) {
         entry* entry = &entries[index];
 
         if (entry->key == NULL) {
-            if (IS_NIL(entry->value)) {
+            if (IS_NIL(entry->value))
                 return tombstone != NULL ? tombstone : entry;
-            } else {
-                if (tombstone == NULL) tombstone = entry;
-            }
-        } else if (entry->key == key) {
+            else if (tombstone == NULL)
+                tombstone = entry;
+        } else if (entry->key == key)
             return entry;
-        }
 
         index = (index + 1) % capacity;
     }
@@ -756,10 +753,12 @@ static entry* find_entry(entry* entries, int capacity, obj_string* key)
 
 bool table_get(table* table, obj_string* key, value* val)
 {
-    if (table->count == 0) return false;
+    if (table->count == 0)
+        return false;
 
     entry* entry = find_entry(table->entries, table->capacity, key);
-    if (entry->key == NULL) return false;
+    if (entry->key == NULL)
+        return false;
 
     *val = entry->value;
     return true;
@@ -777,7 +776,8 @@ static void adjust_capacity(table* table, int capacity)
     table->count = 0;
     for (int i = 0; i < table->capacity; i++) {
         entry* table_entry = &table->entries[i];
-        if (table_entry->key == NULL) continue;
+        if (table_entry->key == NULL)
+            continue;
 
         entry* dest = find_entry(entries, capacity, table_entry->key);
         dest->key = table_entry->key;
@@ -792,8 +792,7 @@ static void adjust_capacity(table* table, int capacity)
 
 bool table_set(table* table, obj_string* key, value val)
 {
-    if (table->count + 1 > table->capacity * TABLE_MAX_LOAD)
-    {
+    if (table->count + 1 > table->capacity * TABLE_MAX_LOAD) {
         int capacity = ((table->capacity) < 8 ? 8 : (table->capacity) * 2);
         adjust_capacity(table, capacity);
     }
@@ -801,7 +800,8 @@ bool table_set(table* table, obj_string* key, value val)
     entry* entry = find_entry(table->entries, table->capacity, key);
 
     bool is_new_key = entry->key == NULL;
-    if (is_new_key && IS_NIL(entry->value)) table->count++;
+    if (is_new_key && IS_NIL(entry->value))
+        table->count++;
 
     entry->key = key;
     entry->value = val;
@@ -810,10 +810,12 @@ bool table_set(table* table, obj_string* key, value val)
 
 bool table_delete(table* table, obj_string* key)
 {
-    if (table->count == 0) return false;
+    if (table->count == 0)
+        return false;
 
     entry* entry = find_entry(table->entries, table->capacity, key);
-    if (entry->key == NULL) return false;
+    if (entry->key == NULL)
+        return false;
 
     entry->key = NULL;
     entry->value = BOOL_VAL(true);
@@ -827,14 +829,16 @@ obj_string* table_find_string(table* table, const char* chars, int length, uint3
 
     uint32_t index = hash % table->capacity;
 
-    for (;;) {
+    while (1) {
         entry* entry = &table->entries[index];
 
         if (entry->key == NULL) {
-            if (IS_NIL(entry->value)) return NULL;
-        } else if (entry->key->length == length && entry->key->hash == hash && memcmp(entry->key->chars, chars, length) == 0) {
+            if (IS_NIL(entry->value)) 
+                return NULL;
+        } else if (entry->key->length == length
+                    && entry->key->hash == hash
+                    && memcmp(entry->key->chars, chars, length) == 0)
             return entry->key;
-        }
 
         index = (index + 1) % table->capacity;
     }
@@ -870,7 +874,8 @@ static token make_token(scanner* scanner, token_type type)
 
 static token_type check_keyword(scanner* scanner, int start, int length, const char* rest, token_type type)
 {
-    if (scanner->current - scanner->start == start + length && memcmp(scanner->start + start, rest, length) == 0)
+    if (scanner->current - scanner->start == start + length
+            && memcmp(scanner->start + start, rest, length) == 0)
         return type;
 
     return TOKEN_IDENTIFIER;
@@ -879,52 +884,71 @@ static token_type check_keyword(scanner* scanner, int start, int length, const c
 static token_type identifier_type(scanner* scanner)
 {
     switch (scanner->start[0]) {
-        case 'a': return check_keyword(scanner, 1, 2, "nd", TOKEN_AND);
-        case 'c': return check_keyword(scanner, 1, 4, "lass", TOKEN_CLASS);
-        case 'e': return check_keyword(scanner, 1, 3, "lse", TOKEN_ELSE);
+        case 'a':
+            return check_keyword(scanner, 1, 2, "nd", TOKEN_AND);
+        case 'c':
+            return check_keyword(scanner, 1, 4, "lass", TOKEN_CLASS);
+        case 'e':
+            return check_keyword(scanner, 1, 3, "lse", TOKEN_ELSE);
         case 'f':
             if (scanner->current - scanner->start > 1){
                 switch (scanner->start[1]) {
-                    case 'a': return check_keyword(scanner, 2, 3, "lse", TOKEN_FALSE);
-                    case 'o': return check_keyword(scanner, 2, 1, "r", TOKEN_FOR);
-                    case 'u': return check_keyword(scanner, 2, 1, "n", TOKEN_FUN);
+                    case 'a':
+                        return check_keyword(scanner, 2, 3, "lse", TOKEN_FALSE);
+                    case 'o':
+                        return check_keyword(scanner, 2, 1, "r", TOKEN_FOR);
+                    case 'u':
+                        return check_keyword(scanner, 2, 1, "n", TOKEN_FUN);
                 }
             }
             break;
-        case 'i': return check_keyword(scanner, 1, 1, "f", TOKEN_IF);
-        case 'n': return check_keyword(scanner, 1, 2, "il", TOKEN_NIL);
-        case 'o': return check_keyword(scanner, 1, 1, "r", TOKEN_OR);
-        case 'p': return check_keyword(scanner, 1, 4, "rint", TOKEN_PRINT);
-        case 'r': return check_keyword(scanner, 1, 5, "eturn", TOKEN_RETURN);
-        case 's': return check_keyword(scanner, 1, 4, "uper", TOKEN_SUPER);
+        case 'i':
+            return check_keyword(scanner, 1, 1, "f", TOKEN_IF);
+        case 'n':
+            return check_keyword(scanner, 1, 2, "il", TOKEN_NIL);
+        case 'o':
+            return check_keyword(scanner, 1, 1, "r", TOKEN_OR);
+        case 'p':
+            return check_keyword(scanner, 1, 4, "rint", TOKEN_PRINT);
+        case 'r':
+            return check_keyword(scanner, 1, 5, "eturn", TOKEN_RETURN);
+        case 's':
+            return check_keyword(scanner, 1, 4, "uper", TOKEN_SUPER);
         case 't':
             if (scanner->current - scanner->start > 1) {
                 switch (scanner->start[1]) {
-                    case 'h': return check_keyword(scanner, 2, 2, "is", TOKEN_THIS);
-                    case 'r': return check_keyword(scanner, 2, 2, "ue", TOKEN_TRUE);
+                    case 'h':
+                        return check_keyword(scanner, 2, 2, "is", TOKEN_THIS);
+                    case 'r':
+                        return check_keyword(scanner, 2, 2, "ue", TOKEN_TRUE);
                 }
             }
             break;
-        case 'v': return check_keyword(scanner, 1, 2, "ar", TOKEN_VAR);
-        case 'w': return check_keyword(scanner, 1, 4, "hile", TOKEN_WHILE);
+        case 'v':
+            return check_keyword(scanner, 1, 2, "ar", TOKEN_VAR);
+        case 'w':
+            return check_keyword(scanner, 1, 4, "hile", TOKEN_WHILE);
         }
     return TOKEN_IDENTIFIER;
 }
 
 static token identifier(scanner* scanner)
 {
-    while (is_alpha(*scanner->current ) || is_digit(*scanner->current )) scanner->current++;
+    while (is_alpha(*scanner->current ) || is_digit(*scanner->current ))
+        scanner->current++;
 
     return make_token(scanner, identifier_type(scanner));
 }
 
 static token scan_number(scanner* scanner)
 {
-    while (is_digit(*scanner->current)) scanner->current++;;
+    while (is_digit(*scanner->current))
+        scanner->current++;;
 
     if (*scanner->current == '.' && is_digit(peek_next(scanner))) {
         scanner->current++;
-        while(is_digit(*scanner->current)) scanner->current++;
+        while(is_digit(*scanner->current))
+            scanner->current++;
     }
 
     return make_token(scanner, TOKEN_NUMBER);
@@ -943,8 +967,8 @@ static token error_token(scanner* scanner, char* message)
 
 static bool scan_match(scanner* scanner, char expected)
 {
-    if (*scanner->current == '\0') return false;
-    if (*scanner->current != expected) return false;
+    if (*scanner->current == '\0' || *scanner->current != expected)
+        return false;
 
     *scanner->current++;
     return true;
@@ -952,9 +976,8 @@ static bool scan_match(scanner* scanner, char expected)
 
 static void skip_whitespace(scanner* scanner)
 {
-    for(;;) { 
-        char c = *scanner->current;
-        switch (c) {
+    while (1) { 
+        switch (*scanner->current) {
             case ' ':
             case '\r':
             case '\t':
@@ -1343,8 +1366,10 @@ static interpret_result run(VM* vm)
 
 VM* init_vm()
 {
-    VM* vm = (VM*)malloc(sizeof(VM));
+    VM* vm = (VM*)calloc(1,sizeof(VM));
 
+    vm->chunk = NULL;
+    vm->ip = NULL;
     vm->stack_top = vm->stack;
     vm->objects = NULL;
     vm->strings.count = 0;
@@ -1360,9 +1385,9 @@ VM* init_vm()
 void free_vm(VM* vm)
 {
     /* Free allocated strings */
-	struct Obj* object = vm->objects;
+	struct obj* object = vm->objects;
 	while (object != NULL) {
-		struct Obj* next = object->next;
+		struct obj* next = object->next;
 		switch (object->type) {
 			case OBJ_STRING:
 				obj_string* str = (obj_string*)object;
@@ -1373,8 +1398,9 @@ void free_vm(VM* vm)
 	}
 
 	/* Free virtual machine */
-	free(vm->strings.entries);
-	free(vm->globals.entries);
+    free(vm->strings.entries);
+    free(vm->globals.entries);
+    free(vm->stack_top);
 	free(vm);
 }
 

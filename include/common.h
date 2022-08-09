@@ -27,7 +27,7 @@
 #define BOOL_VAL(val)     ((value){VAL_BOOL, {.boolean = val}})
 #define NIL_VAL             ((value){VAL_NIL, {.number = 0}})
 #define NUMBER_VAL(val)   ((value){VAL_NUMBER, {.number = val}})
-#define OBJ_VAL(object)     ((value){VAL_OBJ, {.obj = (struct Obj*)object}})
+#define OBJ_VAL(object)     ((value){VAL_OBJ, {.obj = (struct obj*)object}})
 #define OBJ_TYPE(val)     (AS_OBJ(val)->type)
 
 typedef enum {
