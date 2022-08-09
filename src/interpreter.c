@@ -690,7 +690,7 @@ bool compile(char *source, polity_interpreter* interpreter)
         declaration(interpreter);
 
     end_compiler(interpreter);
-
+ 
     interpreter->can_assign = !interpreter->parser->had_error;
     free(interpreter->scanner);
     free(interpreter->parser);
@@ -766,7 +766,6 @@ bool table_get(table* table, obj_string* key, value* val)
 
 static void adjust_capacity(table* table, int capacity)
 {
-    entry* entries_old = table->entries;
     entry* entries = (entry*)malloc(sizeof(entry) * capacity);
     for (int i = 0; i < capacity; i++) {
         entries[i].key = NULL;
@@ -787,7 +786,6 @@ static void adjust_capacity(table* table, int capacity)
 
     table->entries = entries;
     table->capacity = capacity;
-    free(entries_old);
 }
 
 bool table_set(table* table, obj_string* key, value val)
@@ -1367,14 +1365,15 @@ static interpret_result run(VM* vm)
 VM* init_vm()
 {
     VM* vm = (VM*)calloc(1,sizeof(VM));
-
     vm->chunk = NULL;
     vm->ip = NULL;
     vm->stack_top = vm->stack;
     vm->objects = NULL;
+
     vm->strings.count = 0;
     vm->strings.capacity = 0;
     vm->strings.entries = NULL;
+
     vm->globals.count = 0;
     vm->globals.capacity = 0;
     vm->globals.entries = NULL;
@@ -1400,7 +1399,6 @@ void free_vm(VM* vm)
 	/* Free virtual machine */
     free(vm->strings.entries);
     free(vm->globals.entries);
-    free(vm->stack_top);
 	free(vm);
 }
 

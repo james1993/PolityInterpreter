@@ -1,6 +1,6 @@
 IDIR = ./include
 CC=gcc
-CFLAGS=-I$(IDIR)
+CFLAGS=-I$(IDIR) -g -O0
 
 ODIR=src
 
@@ -14,7 +14,7 @@ $(ODIR)/%.o: %.c $(DEPS)
 	$(CC) -c -o $@ $< $(CFLAGS)
 
 polity: $(OBJ)
-	$(CC) -g -O1 -o $@ $^ $(CFLAGS)
+	$(CC) -g -O0 -o $@ $^ $(CFLAGS)
 
 .PHONY: clean
 

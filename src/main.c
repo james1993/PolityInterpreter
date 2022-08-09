@@ -55,6 +55,6 @@ int main(int argc, const char* argv[])
 		exit(64);
 	}
 
-	free_vm(interpreter);
+	free_vm(interpreter->vm);
 	return 0;
 }

@@ -45,6 +45,13 @@ struct obj {
 
 typedef struct {
     struct obj obj;
+    int arity;
+    chunk chunk;
+    obj_string* name;
+} obj_function;
+
+typedef struct {
+    struct obj obj;
     int length;
     char* chars;
     uint32_t hash;
@@ -128,5 +135,6 @@ obj_string* table_find_string(table* table, const char* chars, int length, uint3
 void write_chunk(chunk* chunk, uint8_t byte, int line);
 void free_chunk(chunk* chunk);
 int add_constant(chunk* chunk, value value);
+obj_function* new_function();
 
 #endif
